@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hashen.txmllabs.com/schemas/audit_event.schema.json",
+  "title": "Hashen Audit Event",
+  "description": "Single audit log event (JSONL line)",
+  "type": "object",
+  "required": ["schema_version", "event_type", "prev_hash", "event_hash"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "hashen.audit.v1" },
+    "event_type": { "type": "string" },
+    "prev_hash": { "type": "string" },
+    "event_hash": { "type": "string" }
+  },
+  "additionalProperties": true
+}
