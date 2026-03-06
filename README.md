@@ -1,95 +1,150 @@
-# Hashen Trust Layer
+# Hashen
 
-Enterprise-grade trust layer: tamper-evident seal (EPW), hash-chained audit log, secure sandbox runner, content-fingerprint cache, and compliance-by-design (retention, privacy tags, reports).
+[![CI](https://github.com/txmllabs/Hashen/actions/workflows/ci.yml/badge.svg)](https://github.com/txmllabs/Hashen/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+
+**Hashen** is a trust and provenance verification layer: it produces tamper-evident seals (EPW), a hash-chained audit log, a content-fingerprint cache with spot-check validation, and optional restricted execution for scripts. It is designed to support deterministic verification and evidence bundles suitable for compliance and prosecution-strength provenance.
+
+<!-- Repo topics (set in GitHub repo Settings): provenance, verification, audit, trust, evidence-bundle, python -->
+
+---
+
+## What Hashen guarantees
+
+- **Deterministic seal (EPW)**: Same artifact, config vector, and audit head hash yield the same seal hash. A third party can recompute the EPW from the artifact and stored config; no server-side secrets required.
+- **Tamper evidence**: If the artifact or seal is modified, verification fails with a defined reason code (e.g. `EPW_MISMATCH`).
+- **Hash-chained audit log**: Events are appended with `prev_hash` and `event_hash`; verification detects missing, reordered, or modified lines and returns `AUDIT_CHAIN_BROKEN`.
+- **Audit–seal binding**: The seal stores `audit_head_hash`; verification can confirm the chain and that its head matches the seal.
+- **Content-fingerprint cache**: Cache key is derived from content (and config); reuse requires a passing spot-check. Cache does not substitute for integrity verification of the final seal.
+
+---
+
+## What Hashen does not guarantee
+
+- **Strong process isolation**: The script runner uses a subprocess with timeout and import denylist (AST-based). It is **not** container or VM isolation. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+- **Complete sandbox**: The denylist is defense-in-depth; it can be bypassed by other means. Do not rely on it as a full sandbox for untrusted code.
+- **Cryptographic script signing**: Ed25519 script signature verification is optional and requires the `signing` extra; it is not enabled by default.
+- **C2PA compliance**: The `c2pa_stub` output is a placeholder for future C2PA integration; it is not a full C2PA manifest.
+
+---
+
+## Threat model summary
+
+| Threat | Mitigation |
+|--------|------------|
+| Artifact or seal tampering | EPW recomputation; verification fails on mismatch. |
+| Audit log tampering | Hash chain; any change breaks `event_hash` / `prev_hash`. |
+| Cache poisoning / stale reuse | Content + config fingerprint; spot-check; schema/version checks. |
+| Script RCE / exfil | Restricted execution runner: denylist, no network by default, timeout, optional resource limits (Unix). Not container-grade. |
+| Supply chain | SBOM (CycloneDX), pip-audit in CI, pinned dev deps. |
+
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Verification flow
+
+1. **Produce evidence**: Ingest artifact → run pipeline (analytics, cache lookup, audit events, seal) → write bundle (artifact, audit, seal, verify output, optional manifest).
+2. **Verify**: Load artifact and seal; recompute deterministic payload from artifact + `config_vector`; compare EPW hash to seal; if audit path given, verify chain and `audit_head_hash`.
+3. **Outcome**: `ok` plus optional reason code (e.g. `EPW_MISMATCH`, `AUDIT_CHAIN_BROKEN`, `CONFIG_VECTOR_MISSING`). See [docs/REASON_CODES.md](docs/REASON_CODES.md).
+
+---
+
+## Evidence bundle contents
+
+A bundle (e.g. from `hashen-bundle` or `python tools/run_evidence_bundle.py`) typically contains:
+
+- **artifact.bin** – Copy of the input artifact.
+- **audit.jsonl** – Hash-chained audit log for the run.
+- **seal.json** – Provenance seal (EPW hash, config vector, audit head, etc.).
+- **verify.json** – Result of verifying artifact + seal (and optionally audit).
+- **manifest.json** (if generated) – List of files and their hashes; used to detect missing or altered files in the bundle.
+
+---
+
+## Development status / maturity
+
+- **Current**: Prototype-to-early-production. Core seal, audit, cache, and verification are implemented and tested. Runner is a restricted execution environment (subprocess + policy), not a hardened sandbox.
+- **Future hardening**: Container or VM-based runner, full C2PA integration, optional HSM/signing integration. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+---
 
 ## Bootstrap
 
 ```bash
-# Create virtualenv (recommended)
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 # source .venv/bin/activate  # Linux/macOS
 
-# Install in editable mode (add [dev] for tests, lint, pre-commit)
 pip install -e ".[dev]"
-
-# Optional: install pre-commit hooks (format/lint/secret guard before commit)
-pre-commit install
-pre-commit run -a
+pre-commit install   # optional
 ```
 
 See [docs/DEV_SETUP.md](docs/DEV_SETUP.md) for full developer setup.
 
+### Demo command sequence
+
+```bash
+echo -n "hashen-demo" > sample.bin
+hashen-bundle sample.bin demo-run --output-dir bundle_demo
+hashen-verify bundle_demo
+# Expect: "Verification OK" and exit 0
+```
+
+---
+
 ## Tests
 
 ```bash
-pytest
+pytest -q
 ```
 
 With coverage and ruff:
 
 ```bash
-pip install ruff
-ruff check src tools tests
-ruff format --check src tools tests
+ruff check src tests && ruff format --check src tests
 pytest -v
 ```
 
-## End-to-end evidence bundle demo
+---
 
-1. **Run the evidence bundle tool** (ingest an artifact, run pipeline, produce bundle):
-
-   ```bash
-   python tools/run_evidence_bundle.py <path_to_artifact> <run_id> [--output-dir DIR]
-   ```
-
-   Example:
-
-   ```bash
-   echo "hello" > sample.bin
-   python tools/run_evidence_bundle.py sample.bin demo-run-1 --output-dir bundle_demo
-   ```
-
-   This creates `bundle_demo/` with:
-   - `artifact.bin` (copy of input)
-   - `audit.jsonl` (hash-chained audit log)
-   - `seal.json` (provenance seal with EPW hash)
-   - `verify.json` (verification result: ok, audit_head_hash, seal_hash)
-
-2. **Verify the bundle** (artifact + seal + audit chain):
-
-   ```bash
-   python tools/verify_bundle.py bundle_demo
-   ```
-
-   Output: `Verification OK`
-
-3. **Tamper and re-verify** (must fail):
-
-   ```bash
-   echo "tampered" > bundle_demo/artifact.bin
-   python tools/verify_bundle.py bundle_demo
-   ```
-
-   Output: `Seal verification FAILED: EPW_MISMATCH`
-
-## Retention cleanup
+## CLI (after install)
 
 ```bash
-python tools/retention_cleanup.py <directory> [--raw-ttl-hours 24] [--legal-hold]
+# Evidence bundle (artifact → pipeline → bundle dir)
+hashen-bundle <artifact_path> <run_id> [--output-dir DIR]
+
+# Verify bundle (artifact + seal + audit; optional manifest). Exit 0 = OK, 1 = failure.
+hashen-verify <bundle_dir>
+hashen-verify <bundle_dir> --json   # machine-readable output
+
+# Retention cleanup (delete raw artifacts by TTL)
+hashen-retention <dir> [--raw-ttl-hours 24] [--legal-hold]
 ```
+
+Or run the scripts under `tools/` with the repo root on `PYTHONPATH` (or from repo root):
+
+```bash
+python tools/run_evidence_bundle.py sample.bin demo-run --output-dir bundle_demo
+python tools/verify_bundle.py bundle_demo
+python tools/retention_cleanup.py ./data --raw-ttl-hours 24
+```
+
+---
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR:
+GitHub Actions (`.github/workflows/ci.yml`): pytest, ruff (check + format), pip-audit, CycloneDX SBOM, evidence-bundle smoke test. See workflow file for details.
 
-- pytest
-- ruff (lint + format check)
-- pip-audit (fail on high severity)
-- CycloneDX SBOM → `sbom/bom.json`
+---
 
 ## Docs
 
-- `docs/SECURITY.md` – deterministic recomputation, fixed H2 range, seal + audit
-- `docs/THREAT_MODEL.md` – threats and mitigations
-- `docs/REASON_CODES.md` – verification failure reason codes
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Ingest → analytics → cache → audit → seal → verify; trust boundaries; config vector; audit_head_hash; runner policy.
+- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) – Implementation limits; runner vs container; signature support; platform caveats.
+- [SECURITY.md](SECURITY.md) – Deterministic recomputation; fixed H2 range; seal and audit.
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) – Threats and mitigations.
+- [docs/REASON_CODES.md](docs/REASON_CODES.md) – Verification and runner failure codes.
+- [docs/USE_CASES.md](docs/USE_CASES.md) – Content provenance, audit-ready pipelines, verification artifacts, evidence support.
+- [docs/ROADMAP.md](docs/ROADMAP.md) – Prioritized work items (P0–P2).

@@ -1,4 +1,8 @@
-"""Subprocess runner with timeout, import denylist, and (Unix) resource limits."""
+"""
+Restricted execution runner: subprocess with timeout, import denylist, (Unix) resource limits.
+No network by default (denylist blocks socket/requests/etc.; env is caller-controlled).
+Isolated temp dir per run. Not container-grade isolation.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,8 @@ SANDBOX_POLICY_VIOLATION = "SANDBOX_POLICY_VIOLATION"
 TIMEOUT = "TIMEOUT"
 RESOURCE_LIMIT = "RESOURCE_LIMIT"
 RUNTIME_ERROR = "RUNTIME_ERROR"
+STRICT_MODE_REQUIRES_SCRIPT_HASH = "STRICT_MODE_REQUIRES_SCRIPT_HASH"
+STDOUT_OVERSIZED = "STDOUT_OVERSIZED"
 
 
 def _set_resource_limits(max_cpu_seconds: Optional[float], max_mem_mb: Optional[float]) -> None:
@@ -59,7 +65,11 @@ class SubprocessRunner(RunnerInterface):
         timeout_sec: float,
         script_sha256: Optional[str] = None,
         env: Optional[dict[str, str]] = None,
+        strict_mode: bool = False,
+        max_stdout_bytes: Optional[int] = None,
     ) -> dict[str, Any]:
+        if strict_mode and not script_sha256:
+            return run_result(ok=False, reason=STRICT_MODE_REQUIRES_SCRIPT_HASH)
         allowed, reason = check_policy(script_source)
         if not allowed:
             return run_result(ok=False, reason=reason or SANDBOX_POLICY_VIOLATION)
@@ -89,9 +99,18 @@ class SubprocessRunner(RunnerInterface):
                 )
                 try:
                     stdout, stderr = proc.communicate(timeout=timeout_sec)
+                    out = stdout or ""
+                    if max_stdout_bytes is not None and len(out.encode("utf-8")) > max_stdout_bytes:
+                        return run_result(
+                            ok=False,
+                            reason=STDOUT_OVERSIZED,
+                            stdout=out[:max_stdout_bytes],
+                            stderr=stderr or "",
+                            resource_usage={"returncode": int(proc.returncode)},
+                        )
                     return run_result(
                         ok=(proc.returncode == 0),
-                        stdout=stdout or "",
+                        stdout=out,
                         stderr=stderr or "",
                         reason=None if proc.returncode == 0 else RUNTIME_ERROR,
                         resource_usage={"returncode": int(proc.returncode)},

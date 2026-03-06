@@ -7,9 +7,15 @@ from typing import Any, Optional
 
 from hashen.analytics import combined_h2, compute_resonance, entropy_h2, extract_h1_subset
 from hashen.audit import EventLog
-from hashen.cache import cache_entry, cache_lookup_with_spotcheck, cache_set
+from hashen.cache import (
+    cache_entry,
+    cache_lookup_with_spotcheck_report,
+    cache_set,
+)
+from hashen.cache.models import CACHE_SCHEMA_VERSION
 from hashen.compliance.reporting import build_report, write_report
-from hashen.provenance.seal import create_seal, write_seal
+from hashen.provenance.seal import config_vector_hash, create_seal, write_seal
+from hashen.utils.clock import utc_iso_now
 from hashen.utils.hashing import sha256_bytes
 
 
@@ -20,10 +26,12 @@ def run_pipeline(
     root: Optional[Path] = None,
     target_id: str = "default",
     retain_raw: bool = False,
+    sandbox_metadata: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
     Single artifact through: audit events, feature extract (H1/H2), cache lookup,
     seal, report. Returns summary with audit_head_hash, seal hash, paths.
+    sandbox_metadata: optional runner evidence (script_sha256, policy_digest, etc.).
     """
     root = root or Path.cwd()
     audit_dir = root / "audit"
@@ -39,7 +47,15 @@ def run_pipeline(
     resonance = compute_resonance(values, config_vector)
     log.append("FEATURE_EXTRACT", {})
     content_fingerprint = sha256_bytes(artifact_bytes)
-    hit, cached = cache_lookup_with_spotcheck(target_id, content_fingerprint, h1_subset, root=root)
+    cv_hash = config_vector_hash(config_vector)
+    hit, cached, cache_report = cache_lookup_with_spotcheck_report(
+        target_id,
+        content_fingerprint,
+        h1_subset,
+        root=root,
+        config_vector_hash=cv_hash,
+        schema_version=CACHE_SCHEMA_VERSION,
+    )
     if hit:
         log.append("CACHE_HIT", {})
     else:
@@ -47,9 +63,16 @@ def run_pipeline(
         cache_set(
             target_id,
             content_fingerprint,
-            cache_entry(h1_subset, per_modality_h2, resonance),
+            cache_entry(
+                h1_subset,
+                per_modality_h2,
+                resonance,
+                config_vector_hash=cv_hash,
+                created_at=utc_iso_now(),
+            ),
             root=root,
         )
+    cache_outcome = dict(cache_report)
     log.append("ROUTE", {"path": []})
     artifact_digest = sha256_bytes(artifact_bytes)
     log.append("SEAL_EMIT", {"digest": artifact_digest})
@@ -66,8 +89,14 @@ def run_pipeline(
         cv,
         audit_head,
         resonance=resonance,
+        sandbox_metadata=sandbox_metadata,
     )
     write_seal(artifact_digest, full_record, root=root)
+    fixed_range = {
+        "h2_min": config_vector.get("h2_min"),
+        "h2_max": config_vector.get("h2_max"),
+        "h2_bins": config_vector.get("h2_bins"),
+    }
     report = build_report(
         run_id,
         audit_head_hash=audit_head,
@@ -75,6 +104,9 @@ def run_pipeline(
         retention_raw_ttl_hours=24,
         retention_derived_ttl_days=365,
         legal_hold=False,
+        config_vector_summary=dict(config_vector),
+        fixed_range=fixed_range,
+        cache_outcome=cache_outcome,
     )
     report_path = write_report(run_id, report, root=root)
     return {
@@ -86,4 +118,5 @@ def run_pipeline(
         "report_path": str(report_path),
         "seal_path": str(root / "seals" / f"{artifact_digest}.seal.json"),
         "cache_hit": hit,
+        "cache_outcome": cache_outcome,
     }

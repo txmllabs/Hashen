@@ -5,14 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hashen"
 version = "0.1.0"
-description = "Hashen trust layer: seal, audit chain, sandbox, cache, compliance"
+description = "Trust and provenance verification layer: seal (EPW), audit chain, cache, restricted execution"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+license = { text = "Apache-2.0" }
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
+  "pytest-cov>=4.0",
   "ruff>=0.4",
   "pip-audit>=2.7",
   "cyclonedx-bom>=4.5",
@@ -21,6 +23,9 @@ dev = [
 signing = ["cryptography>=41.0"]
 
 [project.scripts]
+hashen-bundle = "hashen.cli.bundle:main"
+hashen-verify = "hashen.cli.verify:main"
+hashen-retention = "hashen.cli.retention:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -37,6 +42,7 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = ["UP045"]
+per-file-ignores = { "examples/*.py" = ["E402"] }
 
 [tool.ruff.format]
 quote-style = "double"

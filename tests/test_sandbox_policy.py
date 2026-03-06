@@ -107,3 +107,42 @@ def test_runner_excessive_allocation_triggers_resource_limit():
     # May get RESOURCE_LIMIT or (on some systems) still succeed if limit not enforced
     if not result["ok"]:
         assert result.get("reason") in ("RESOURCE_LIMIT", "RUNTIME_ERROR", "TIMEOUT")
+
+
+def test_strict_mode_requires_script_hash():
+    """Strict mode rejects run when script_sha256 is not provided."""
+    runner = SubprocessRunner()
+    result = runner.run_script("print(1)", timeout_sec=5.0, strict_mode=True)
+    assert result["ok"] is False
+    assert result.get("reason") == "STRICT_MODE_REQUIRES_SCRIPT_HASH"
+
+
+def test_strict_mode_accepts_when_script_sha256_provided():
+    """Strict mode accepts when script_sha256 matches."""
+    import hashlib
+
+    runner = SubprocessRunner()
+    src = "print(42)"
+    h = hashlib.sha256(src.encode()).hexdigest()
+    result = runner.run_script(src, timeout_sec=5.0, script_sha256=h, strict_mode=True)
+    assert result["ok"] is True
+
+
+def test_oversized_stdout_fails():
+    """When max_stdout_bytes is set and stdout exceeds it, return STDOUT_OVERSIZED."""
+    runner = SubprocessRunner()
+    result = runner.run_script(
+        'print("x" * 1000)',
+        timeout_sec=5.0,
+        max_stdout_bytes=100,
+    )
+    assert result["ok"] is False
+    assert result.get("reason") == "STDOUT_OVERSIZED"
+
+
+def test_runner_returns_stdout_as_is_invalid_json():
+    """Runner returns raw stdout; caller is responsible for JSON validation."""
+    runner = SubprocessRunner()
+    result = runner.run_script('print("not json at all")', timeout_sec=5.0)
+    assert result["ok"] is True
+    assert "not json at all" in result.get("stdout", "")

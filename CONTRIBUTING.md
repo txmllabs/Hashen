@@ -19,9 +19,9 @@ See [docs/DEV_SETUP.md](docs/DEV_SETUP.md) for pre-commit setup (format/lint/sec
 
 ```bash
 # Example: create a small dummy artifact
-printf 'hashen-ci' > sample.bin
-python tools/run_evidence_bundle.py sample.bin demo-run --output-dir bundle_demo
-python tools/verify_bundle.py bundle_demo
+echo -n "hashen-ci" > sample.bin
+hashen-bundle sample.bin demo-run --output-dir bundle_demo
+hashen-verify bundle_demo
 ```
 
 Bundles (`bundle_*/`, `evidence/`) are gitignored. Do not commit them if they contain anything sensitive.

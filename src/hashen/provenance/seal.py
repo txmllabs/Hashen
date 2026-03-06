@@ -1,4 +1,12 @@
-"""Hashen Seal (EPW): deterministic provenance record, dual-channel storage, offline verifier."""
+"""
+Hashen Seal (EPW): deterministic provenance record, dual-channel storage, offline verifier.
+
+Root of verification is content-derived recomputation: given artifact bytes and the seal record
+(which contains config_vector), the verifier recomputes the deterministic payload and EPW hash.
+Metadata copies (sidecar seal JSON, c2pa_stub) are convenience channels; verification does not
+depend on them—only on artifact + seal record (with config_vector). Tampered content yields
+EPW_MISMATCH.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +34,12 @@ CONFIG_VECTOR_MISSING = "CONFIG_VECTOR_MISSING"
 AUDIT_CHAIN_BROKEN = "AUDIT_CHAIN_BROKEN"
 ARTIFACT_DECODE_FAILED = "ARTIFACT_DECODE_FAILED"
 INSUFFICIENT_MODALITIES = "INSUFFICIENT_MODALITIES"
+SCHEMA_VERSION_UNSUPPORTED = "SCHEMA_VERSION_UNSUPPORTED"
+POLICY_DIGEST_MISMATCH = "POLICY_DIGEST_MISMATCH"
+MANIFEST_HASH_MISMATCH = "MANIFEST_HASH_MISMATCH"
+REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"
+
+SUPPORTED_SEAL_SCHEMA_VERSIONS = frozenset({SEAL_SCHEMA_VERSION})
 
 # Keys excluded from hashed payload (non-deterministic or envelope-only)
 _NON_DETERMINISTIC_KEYS = frozenset(
@@ -56,6 +70,11 @@ def artifact_to_values(artifact_bytes: bytes) -> list[float]:
     return [b / 255.0 for b in artifact_bytes]
 
 
+def config_vector_hash(config_vector: dict[str, Any]) -> str:
+    """Deterministic hash of config vector for binding and cache validation."""
+    return sha256_canonical(config_vector)
+
+
 def compute_deterministic_payload(
     artifact_bytes: bytes,
     config_vector: dict[str, Any],
@@ -63,6 +82,8 @@ def compute_deterministic_payload(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
+    include_config_vector_hash: bool = True,
 ) -> dict[str, Any]:
     """Build deterministic seal payload (no issued_at). Same inputs -> same dict."""
     values = artifact_to_values(artifact_bytes)
@@ -72,7 +93,7 @@ def compute_deterministic_payload(
     comb_h2 = combined_h2(per_modality_h2, config_vector)
     if resonance is None:
         resonance = compute_resonance(values, config_vector)
-    return {
+    payload = {
         "schema_version": SEAL_SCHEMA_VERSION,
         "h1_subset": h1_subset,
         "per_modality_h2": per_modality_h2,
@@ -83,6 +104,11 @@ def compute_deterministic_payload(
         "audit_head_hash": audit_head_hash,
         "sandbox_metadata": sandbox_metadata,
     }
+    if include_config_vector_hash:
+        payload["config_vector_hash"] = config_vector_hash(config_vector)
+    if policy_digest is not None:
+        payload["policy_digest"] = policy_digest
+    return payload
 
 
 def compute_seal_payload(
@@ -92,6 +118,7 @@ def compute_seal_payload(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
 ) -> dict[str, Any]:
     """Alias for backward compatibility; returns deterministic payload only."""
     return compute_deterministic_payload(
@@ -101,6 +128,7 @@ def compute_seal_payload(
         routing_path=routing_path,
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
+        policy_digest=policy_digest,
     )
 
 
@@ -111,6 +139,7 @@ def create_seal(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
     root: Optional[Path] = None,
     clock: Optional[Callable[[], str]] = None,
 ) -> tuple[dict[str, Any], str]:
@@ -127,6 +156,7 @@ def create_seal(
         routing_path=routing_path,
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
+        policy_digest=policy_digest,
     )
     epw_hash = compute_epw_hash(payload)
     issued_at = utc_iso_now(clock=clock)
@@ -139,7 +169,8 @@ def write_seal(
     full_record: dict[str, Any],
     root: Optional[Path] = None,
 ) -> tuple[Path, Path]:
-    """Dual-channel: write seals/<digest>.seal.json and c2pa_stub/<digest>.json."""
+    """Dual-channel: write sidecar seal and c2pa_stub. Both are metadata copies;
+    verification recomputes from artifact + config_vector in the record."""
     seals = seals_dir(root)
     c2pa = c2pa_stub_dir(root)
     seal_path = seals / f"{artifact_digest}.seal.json"
@@ -161,6 +192,11 @@ def verify_seal(
     config = seal_record.get("config_vector")
     if not config:
         return False, CONFIG_VECTOR_MISSING
+    if not seal_record.get("epw_hash"):
+        return False, REQUIRED_FIELD_MISSING
+    schema_ver = seal_record.get("schema_version")
+    if schema_ver and schema_ver not in SUPPORTED_SEAL_SCHEMA_VERSIONS:
+        return False, SCHEMA_VERSION_UNSUPPORTED
     audit_head = seal_record.get("audit_head_hash", "")
     if audit_log_path and audit_log_path.exists():
         result = verify_audit_chain(audit_log_path)
@@ -168,6 +204,7 @@ def verify_seal(
             return False, AUDIT_CHAIN_BROKEN
         if result.audit_head_hash != audit_head:
             return False, AUDIT_CHAIN_BROKEN
+    include_cvh = "config_vector_hash" in seal_record
     payload = compute_deterministic_payload(
         artifact_bytes,
         config,
@@ -175,6 +212,8 @@ def verify_seal(
         routing_path=seal_record.get("routing_path"),
         resonance=seal_record.get("resonance"),
         sandbox_metadata=seal_record.get("sandbox_metadata"),
+        policy_digest=seal_record.get("policy_digest"),
+        include_config_vector_hash=include_cvh,
     )
     computed_epw = compute_epw_hash(payload)
     stored_epw = seal_record.get("epw_hash")
@@ -190,7 +229,33 @@ def verify_seal_file(
     seal_path: Path,
     audit_log_path: Optional[Path] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Load artifact and seal from paths; run verify_seal."""
+    """Load artifact and seal from paths; run verify_seal.
+    Seal can be sidecar (seals/*.seal.json) or bundle copy (seal.json). Recomputation
+    uses only artifact bytes and config_vector from the seal record."""
     artifact_bytes = artifact_path.read_bytes()
     seal_record = canonical_loads(seal_path.read_text())
     return verify_seal(artifact_bytes, seal_record, audit_log_path)
+
+
+def verify_dual_channel_consistency(
+    seal_path: Path,
+    c2pa_path: Path,
+) -> tuple[bool, Optional[str]]:
+    """If both sidecar and c2pa stub exist, verify they contain the same EPW hash.
+    Returns (True, None) if consistent or c2pa missing; (False, reason) if mismatch."""
+    if not seal_path.exists():
+        return False, "SEAL_MISSING"
+    if not c2pa_path.exists():
+        return True, None  # secondary channel optional
+    try:
+        seal_rec = canonical_loads(seal_path.read_text())
+        c2pa_rec = canonical_loads(c2pa_path.read_text())
+    except Exception as e:
+        return False, f"DUAL_CHANNEL_READ_ERROR: {e}"
+    epw_seal = seal_rec.get("epw_hash")
+    epw_c2pa = c2pa_rec.get("epw_hash")
+    if epw_seal is None or epw_c2pa is None:
+        return False, "REQUIRED_FIELD_MISSING"
+    if epw_seal != epw_c2pa:
+        return False, "DUAL_CHANNEL_MISMATCH"
+    return True, None

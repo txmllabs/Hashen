@@ -12,7 +12,8 @@ from hashen.cache import (
     cache_set,
     spot_check_pass,
 )
-from hashen.cache.models import cache_entry
+from hashen.cache.fingerprint_cache import get_cache_path
+from hashen.cache.models import CACHE_SCHEMA_VERSION, cache_entry
 
 
 @pytest.fixture
@@ -63,3 +64,50 @@ def test_cache_set_get_roundtrip(cache_root: Path):
     cache_set("tid", "cfp", entry, root=cache_root)
     got = cache_get("tid", "cfp", root=cache_root)
     assert got == entry
+
+
+def test_cache_config_vector_hash_mismatch_invalidation(cache_root: Path):
+    """When config_vector_hash does not match, cache returns miss."""
+    target_id = "t3"
+    fp = "fp-same"
+    entry = cache_entry([0.1, 0.2], [0.5], None, config_vector_hash="hash1")
+    cache_set(target_id, fp, entry, root=cache_root)
+    hit, _ = cache_lookup_with_spotcheck(
+        target_id, fp, [0.1, 0.2], root=cache_root, config_vector_hash="hash2"
+    )
+    assert hit is False
+    hit2, _ = cache_lookup_with_spotcheck(
+        target_id, fp, [0.1, 0.2], root=cache_root, config_vector_hash="hash1"
+    )
+    assert hit2 is True
+
+
+def test_cache_schema_version_mismatch_invalidation(cache_root: Path):
+    """When schema_version does not match, cache returns miss."""
+    target_id = "t4"
+    fp = "fp-same"
+    entry = cache_entry([0.1], [0.5], None)
+    cache_set(target_id, fp, entry, root=cache_root)
+    hit, _ = cache_lookup_with_spotcheck(
+        target_id, fp, [0.1], root=cache_root, schema_version="other.v1"
+    )
+    assert hit is False
+    hit2, _ = cache_lookup_with_spotcheck(
+        target_id, fp, [0.1], root=cache_root, schema_version=CACHE_SCHEMA_VERSION
+    )
+    assert hit2 is True
+
+
+def test_cache_corrupted_entry_fails_closed(cache_root: Path):
+    """Corrupted or invalid cache file yields miss, not reuse."""
+    from hashen.utils.hashing import sha256_bytes
+
+    target_id = "t5"
+    fp = "fp-corrupt"
+    key = sha256_bytes((target_id + fp).encode())
+    path = get_cache_path(cache_root, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not valid json {{{")
+    hit, entry = cache_lookup_with_spotcheck(target_id, fp, [0.1], root=cache_root)
+    assert hit is False
+    assert entry is None
