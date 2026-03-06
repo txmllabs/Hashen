@@ -33,6 +33,8 @@ htmlcov/
 /bundle_*/
 evidence/
 sample.bin
+sample_tiny.bin
+_final_demo/
 
 # Secrets and keys
 .env
