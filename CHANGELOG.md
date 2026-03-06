@@ -46,8 +46,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed / Repairs (branch integrity pass)
 
-- **Formatting / line endings**: Added `.gitattributes` to enforce LF for source, config, and docs so GitHub raw views and CI use consistent line endings; no flattened/single-line files found in local audit.
-- **Install and CI**: Validated `pip install -e ".[dev]"`, `python -m compileall`, pytest, ruff check, ruff format; CI workflow (`.github/workflows/ci.yml`) confirmed valid multiline YAML with checkout, Python setup, editable install, compile, pytest, ruff, pip-audit, SBOM, evidence-bundle smoke test.
+- **Multiline source/config**: No flattened or single-line files found in audit; `.gitattributes` enforces LF so GitHub raw views and CI stay consistent. Key files (pyproject.toml, ci.yml, seal.py, event_log.py, bundle.py, verify.py, README.md) are valid multiline.
+- **Package and CLI**: Validated `pip install -e ".[dev]"`, console scripts (hashen-bundle, hashen-verify, hashen-retention), compileall, pytest, ruff, pip check. CLI exit codes: 0 on success, 1 on failure; tamper detected (MANIFEST_HASH_MISMATCH or EPW_MISMATCH).
+- **CI workflow**: `.github/workflows/ci.yml` is valid multiline YAML with checkout, Python setup, editable install, compile, pytest, ruff check/format, pip-audit, SBOM, evidence-bundle smoke test.
 - **Cleanup**: Removed duplicate/stale `README.txt` and `Makefile.txt`; canonical files are `README.md` and `Makefile`.
 
 ## [0.1.0] - (pre-hardening)
