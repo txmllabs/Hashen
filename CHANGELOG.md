@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Branch reconciliation**
+  - Reconciled `upgrade` work onto `main` (unified CLI, schemas, verification, compliance policy, restricted execution hardening).
+- **CLI**
+  - Unified `hashen run` supports `--target-id` and `--bundle-id` for manifest/audit binding (legacy entry points preserved).
+- **Verification**
+  - Manifest verification now cross-checks `content_fingerprint`, `seal_hash`, `audit_head_hash`, and `report_hash` when present.
+
 - **Docs**
   - README: "What Hashen guarantees" vs "does not guarantee", threat model summary, verification flow, evidence bundle contents, development status.
   - `docs/ARCHITECTURE.md`: ingest → analytics → cache → audit → seal → verify; trust boundaries; config vector; audit_head_hash; runner policy boundary.

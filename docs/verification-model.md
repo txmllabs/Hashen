@@ -9,7 +9,9 @@ The verification command (e.g. `hashen verify <bundle_dir>`) runs one coherent f
 1. **Artifact and seal presence**: Bundle must contain artifact (artifact.bin or artifact) and seal (seal.json or seals/*.seal.json).
 2. **Seal JSON**: Parse seal; optionally validate against seal schema (warnings only); recompute EPW from artifact + config_vector; compare with stored epw_hash.
 3. **Audit chain** (if audit.jsonl present): Verify prev_hash/event_hash chain; confirm audit_head_hash matches seal’s audit_head_hash.
-4. **Manifest** (if manifest.json present): All listed files must exist and match their SHA-256.
+4. **Manifest** (if manifest.json present):
+   - All listed files must exist and match their SHA-256.
+   - If present, `content_fingerprint`, `seal_hash`, `audit_head_hash`, and `report_hash` must match their corresponding objects/files.
 5. **Report** (if report.json present): Optionally validate report schema; ensure report’s seal_hash and audit_head_hash match seal and audit chain.
 
 ## Output shape
@@ -39,6 +41,11 @@ Verification result is a JSON object (default output of `hashen verify`):
 | REPORT_INCONSISTENT | Report seal_hash or audit_head_hash does not match seal/audit. |
 | MANIFEST_INCONSISTENT | Manifest missing, invalid, or file hash mismatch. |
 | UNSUPPORTED_SCHEMA_VERSION | Seal or manifest schema version not supported. |
+
+## Fatal vs warning semantics
+
+- **Fatal** (verification fails, exit non-zero): missing required bundle files (artifact/seal), malformed JSON, seal EPW mismatch, audit chain broken, manifest mismatch (when manifest exists), report inconsistencies (when report exists), unsupported schema version.
+- **Warnings** (verification can still pass): schema validation failures for seal/report when core recomputation checks pass.
 
 See [REASON_CODES.md](REASON_CODES.md) for the full list used across seal, audit, runner, and cache.
 

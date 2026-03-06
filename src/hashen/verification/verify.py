@@ -11,7 +11,7 @@ from hashen.provenance.bundle_manifest import (
     MANIFEST_FILENAME,
     verify_bundle_manifest,
 )
-from hashen.provenance.seal import EPW_MISMATCH, verify_seal_file
+from hashen.provenance.seal import SCHEMA_VERSION_UNSUPPORTED, verify_seal_file
 from hashen.schemas.loader import validate_report, validate_seal
 from hashen.utils.canonical_json import canonical_loads
 
@@ -114,6 +114,9 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
         result.reason = result.reason or reason_seal
     else:
         result.seal_valid = True
+    if reason_seal == SCHEMA_VERSION_UNSUPPORTED:
+        result.errors.append(UNSUPPORTED_SCHEMA_VERSION)
+        result.reason = result.reason or UNSUPPORTED_SCHEMA_VERSION
 
     # Audit
     audit_path = root / "audit.jsonl"
@@ -175,18 +178,13 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     # Pass only if seal valid; audit/manifest if present must be valid; no fatal errors
     audit_required_ok = not (audit_path and audit_path.exists()) or result.audit_chain_valid
     manifest_required_ok = not result.manifest_present or result.manifest_valid
-    fatal_errors = [
-        e
-        for e in result.errors
-        if REPORT_INCONSISTENT in e
-        or "MISSING_FILE" in e
-        or "MANIFEST" in e
-        or MALFORMED_JSON in e
-        or EPW_MISMATCH in e
-        or AUDIT_CHAIN_BROKEN in e
-    ]
+    # Fatal: any errors are fatal. REPORT_INCONSISTENT only applies when report exists.
+    fatal_errors = list(result.errors)
+    if not result.report_present:
+        fatal_errors = [e for e in fatal_errors if REPORT_INCONSISTENT not in e]
+
     result.ok = (
-        result.seal_valid and audit_required_ok and manifest_required_ok and len(fatal_errors) == 0
+        result.seal_valid and audit_required_ok and manifest_required_ok and not fatal_errors
     )
     if result.errors and not result.reason:
         result.reason = result.errors[0].split(":")[0] if result.errors else None

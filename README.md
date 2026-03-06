@@ -135,7 +135,7 @@ Unified CLI (JSON by default; use `--pretty` for human-readable output):
 
 ```bash
 # Run pipeline and produce evidence bundle
-hashen run <artifact_path> [run_id] [--output-dir DIR] [--pretty]
+hashen run <artifact_path> [run_id] [--output-dir DIR] [--target-id default] [--bundle-id ID] [--pretty]
 
 # Verify bundle; exit 0 = OK, non-zero = failure. Output: ok, seal_valid, audit_chain_valid, errors, warnings
 hashen verify <bundle_dir> [--pretty]
