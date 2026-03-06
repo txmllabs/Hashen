@@ -10,6 +10,12 @@
 
 ---
 
+## Overview
+
+Hashen provides deterministic seal generation (EPW), hash-chained audit logs, content-fingerprint cache with spot-check validation, and a restricted execution runner for scripts. Verification is recomputational: given artifact and seal record, a third party can verify without server-side secrets.
+
+---
+
 ## What Hashen guarantees
 
 - **Deterministic seal (EPW)**: Same artifact, config vector, and audit head hash yield the same seal hash. A third party can recompute the EPW from the artifact and stored config; no server-side secrets required.
@@ -70,7 +76,7 @@ A bundle (e.g. from `hashen-bundle` or `python tools/run_evidence_bundle.py`) ty
 
 ---
 
-## Bootstrap
+## Installation
 
 ```bash
 python -m venv .venv
@@ -83,13 +89,17 @@ pre-commit install   # optional
 
 See [docs/DEV_SETUP.md](docs/DEV_SETUP.md) for full developer setup.
 
-### Demo command sequence
+### Quickstart
 
 ```bash
 echo -n "hashen-demo" > sample.bin
 hashen-bundle sample.bin demo-run --output-dir bundle_demo
 hashen-verify bundle_demo
 # Expect: "Verification OK" and exit 0
+
+# Tamper with artifact then re-verify; expect failure (e.g. MANIFEST_HASH_MISMATCH, exit 1)
+# echo x >> bundle_demo/artifact.bin
+# hashen-verify bundle_demo
 ```
 
 ---
