@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hashen.txmllabs.com/schemas/verification_result.schema.json",
+  "title": "Hashen Verification Result",
+  "description": "Structured result of bundle/artifact verification",
+  "type": "object",
+  "required": ["ok"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "seal_valid": { "type": "boolean" },
+    "audit_chain_valid": { "type": "boolean" },
+    "report_present": { "type": "boolean" },
+    "manifest_valid": { "type": "boolean" },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "reason": { "type": "string" },
+    "seal_hash": { "type": "string" },
+    "audit_head_hash": { "type": "string" }
+  },
+  "additionalProperties": true
+}

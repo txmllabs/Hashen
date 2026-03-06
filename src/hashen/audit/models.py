@@ -17,6 +17,7 @@ AuditEventType = Literal[
     "CACHE_MISS",
     "SANDBOX_START",
     "SANDBOX_END",
+    "POLICY_EVALUATED",
     "SEAL_EMIT",
     "VERIFY",
 ]

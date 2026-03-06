@@ -107,9 +107,23 @@ def main() -> int:
     (root / "verify_fail.json").write_text(
         json.dumps(verify_fail_out, sort_keys=True, indent=2),
     )
+    from hashen import __version__
     from hashen.provenance.bundle_manifest import write_bundle_manifest
+    from hashen.utils.clock import utc_iso_now
 
-    write_bundle_manifest(root)
+    report_src = root / "reports" / f"{args.run_id}.json"
+    if report_src.exists():
+        shutil.copy2(report_src, root / "report.json")
+    write_bundle_manifest(
+        root,
+        created_at=utc_iso_now(),
+        bundle_id=args.run_id,
+        target_id="default",
+        content_fingerprint=result["artifact_digest"],
+        seal_hash_value=result["seal_hash"],
+        audit_head_hash_value=result["audit_head_hash"],
+        tool_version=__version__,
+    )
     print(f"Bundle written to {out_dir}")
     print(f"  artifact: {artifact_copy.name}")
     print("  audit: audit.jsonl")
