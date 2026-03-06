@@ -20,10 +20,12 @@ dev = [
   "cyclonedx-bom>=4.5",
   "pre-commit>=3.7",
 ]
+api = ["fastapi>=0.100", "uvicorn>=0.20", "python-multipart>=0.0.5"]
 signing = ["cryptography>=41.0"]
 
 [project.scripts]
 hashen = "hashen.cli.main:main"
+hashen-api = "hashen.api.app:run_server"
 hashen-bundle = "hashen.cli.bundle:main"
 hashen-verify = "hashen.cli.verify:main"
 hashen-retention = "hashen.cli.retention:main"

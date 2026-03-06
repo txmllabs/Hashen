@@ -1,0 +1,22 @@
+{
+  "attack_h2_mean": 3.6429,
+  "attack_h2_std": 0.8001,
+  "auc": 1.0,
+  "auth_h2_mean": 4.7637,
+  "auth_h2_std": 0.1237,
+  "best_accuracy": 1.0,
+  "best_threshold": 4.4114,
+  "cohens_d": 1.96,
+  "config": {
+    "h1_bins": 64,
+    "h2_bins": 64,
+    "h2_max": 6.0,
+    "h2_min": 0.0,
+    "pre_computed_h1": true,
+    "window_size": 512
+  },
+  "domain": "audio",
+  "n_attack": 10,
+  "n_authentic": 10,
+  "signal": "normal"
+}

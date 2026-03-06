@@ -437,6 +437,64 @@ def _cmd_policy_explain(parser: argparse.ArgumentParser, args: argparse.Namespac
     return _cmd_policy_check(parser, args)
 
 
+def _cmd_benchmark_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Run TSEC benchmark on synthetic dataset; output JSON report."""
+    from hashen.benchmarks.datasets import (
+        generate_audio_dataset,
+        generate_financial_dataset,
+        generate_image_dataset,
+    )
+    from hashen.benchmarks.report import write_report
+    from hashen.benchmarks.runner import run_benchmark
+
+    domain = getattr(args, "domain", "audio")
+    n_samples = getattr(args, "samples", 40)
+    seed = getattr(args, "seed", 42)
+    out_path = getattr(args, "output", None)
+    pretty = getattr(args, "pretty", False)
+
+    config = {
+        "window_size": 512,
+        "h1_bins": 64,
+        "h2_min": 0.0,
+        "h2_max": 6.0,
+        "h2_bins": 64,
+    }
+    if domain == "audio":
+        config["pre_computed_h1"] = True
+        ds = generate_audio_dataset(n_samples=n_samples, seed=seed)
+    elif domain == "financial":
+        ds = generate_financial_dataset(n_samples=n_samples, seed=seed)
+    elif domain == "image":
+        ds = generate_image_dataset(n_samples=n_samples, seed=seed)
+    elif domain == "all":
+        results = []
+        for d, gen in [
+            ("audio", lambda: generate_audio_dataset(n_samples, seed)),
+            ("financial", lambda: generate_financial_dataset(n_samples, seed)),
+            ("image", lambda: generate_image_dataset(n_samples, seed)),
+        ]:
+            cfg = dict(config)
+            if d == "audio":
+                cfg["pre_computed_h1"] = True
+            report = run_benchmark(gen(), config=cfg, domain=d)
+            results.append(report)
+        out = {"domains": results}
+        write_report(out, path=Path(out_path) if out_path else None, pretty=pretty)
+        return 0
+    else:
+        _json_out({"error": "unknown domain", "domain": domain}, pretty)
+        return 1
+
+    report = run_benchmark(ds, config=config, domain=domain)
+    write_report(
+        report,
+        path=Path(out_path) if out_path else None,
+        pretty=pretty,
+    )
+    return 0
+
+
 def _cmd_retention_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Show lifecycle state, legal-hold status, retention window, policy notes."""
     from hashen.compliance.lifecycle import retention_status
@@ -535,6 +593,22 @@ def main() -> int:
     pexplain.add_argument("--consent-basis", type=str, default=None)
     pexplain.add_argument("--purpose-of-processing", type=str, default=None)
     pexplain.set_defaults(_run=_cmd_policy_explain)
+
+    # hashen benchmark run
+    benchmark_p = sub.add_parser("benchmark", help="Benchmark subcommands")
+    benchmark_sub = benchmark_p.add_subparsers(dest="benchmark_cmd", required=True)
+    br = benchmark_sub.add_parser("run", help="Run TSEC benchmark on synthetic dataset")
+    br.add_argument(
+        "--domain",
+        choices=("audio", "financial", "image", "all"),
+        default="audio",
+        help="Dataset domain",
+    )
+    br.add_argument("--samples", type=int, default=40, help="Samples per class")
+    br.add_argument("--seed", type=int, default=42, help="Random seed")
+    br.add_argument("--output", type=Path, default=None, help="Output JSON file")
+    br.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
+    br.set_defaults(_run=_cmd_benchmark_run)
 
     # hashen retention status
     retention_p = sub.add_parser("retention", help="Retention subcommands")

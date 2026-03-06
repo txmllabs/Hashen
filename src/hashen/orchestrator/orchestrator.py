@@ -167,6 +167,7 @@ def run_pipeline(
         policy_decision=policy_decision_dict,
     )
     report_path = write_report(run_id, report, root=root)
+    threshold = config_vector.get("authenticity_threshold", 4.0)
     return {
         "run_id": run_id,
         "audit_head_hash": audit_head,
@@ -177,4 +178,10 @@ def run_pipeline(
         "seal_path": str(root / "seals" / f"{artifact_digest}.seal.json"),
         "cache_hit": hit,
         "cache_outcome": cache_outcome,
+        "h2": analytics["h2"],
+        "is_authentic": analytics["h2"] > threshold,
+        "routing_path": routing_path,
+        "uncertainty": uncertainty,
+        "resonance": resonance,
+        "seal_record": full_record,
     }
