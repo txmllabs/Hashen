@@ -1,11 +1,20 @@
-"""Entropy engine: H1 (raw/subset) and H2 with fixed preconfigured range (no auto-ranging)."""
+"""
+Entropy engine: H1 (raw/subset) and H2 with fixed preconfigured range.
+
+H2 histogram range is taken only from config_vector (h2_min, h2_max, h2_bins).
+It is preconfigured and not adapted per sample—no auto-ranging from sample min/max.
+This avoids histogram auto-scaling artifacts and keeps verification deterministic.
+"""
 
 from __future__ import annotations
 
 import math
 from typing import Any
 
-# Fixed range for H2 is from config_vector; no per-sample auto-ranging (spec A.3)
+# Default H2 range when not in config; caller should set explicitly for reproducibility
+DEFAULT_H2_MIN = 0.0
+DEFAULT_H2_MAX = 1.0
+DEFAULT_H2_BINS = 16
 
 
 def extract_h1_subset(
@@ -26,20 +35,20 @@ def entropy_h2(
 ) -> float:
     """
     H2 entropy over values using fixed preconfigured range (min_val, max_val).
-    No auto-ranging: range comes from config_vector only.
+    Range is from config_vector only—preconfigured, not adapted per sample.
+    Values outside [min_val, max_val] are clamped into the bin range.
     """
     if not values:
         return 0.0
     min_val = config.get("h2_min")
     max_val = config.get("h2_max")
     if min_val is None:
-        min_val = 0.0
+        min_val = DEFAULT_H2_MIN
     if max_val is None:
-        max_val = 1.0
+        max_val = DEFAULT_H2_MAX
     if max_val <= min_val:
         max_val = min_val + 1.0
-    # Bin counts in fixed range (e.g. 16 bins)
-    num_bins = max(2, config.get("h2_bins", 16))
+    num_bins = max(2, config.get("h2_bins", DEFAULT_H2_BINS))
     bins = [0.0] * num_bins
     width = (max_val - min_val) / num_bins
     for v in values:

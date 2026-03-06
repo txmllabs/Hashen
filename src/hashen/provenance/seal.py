@@ -1,4 +1,12 @@
-"""Hashen Seal (EPW): deterministic provenance record, dual-channel storage, offline verifier."""
+"""
+Hashen Seal (EPW): deterministic provenance record, dual-channel storage, offline verifier.
+
+Root of verification is content-derived recomputation: given artifact bytes and the seal record
+(which contains config_vector), the verifier recomputes the deterministic payload and EPW hash.
+Metadata copies (sidecar seal JSON, c2pa_stub) are convenience channels; verification does not
+depend on them—only on artifact + seal record (with config_vector). Tampered content yields
+EPW_MISMATCH.
+"""
 
 from __future__ import annotations
 
@@ -161,7 +169,8 @@ def write_seal(
     full_record: dict[str, Any],
     root: Optional[Path] = None,
 ) -> tuple[Path, Path]:
-    """Dual-channel: write seals/<digest>.seal.json and c2pa_stub/<digest>.json."""
+    """Dual-channel: write sidecar seal and c2pa_stub. Both are metadata copies;
+    verification recomputes from artifact + config_vector in the record."""
     seals = seals_dir(root)
     c2pa = c2pa_stub_dir(root)
     seal_path = seals / f"{artifact_digest}.seal.json"
@@ -220,7 +229,33 @@ def verify_seal_file(
     seal_path: Path,
     audit_log_path: Optional[Path] = None,
 ) -> tuple[bool, Optional[str]]:
-    """Load artifact and seal from paths; run verify_seal."""
+    """Load artifact and seal from paths; run verify_seal.
+    Seal can be sidecar (seals/*.seal.json) or bundle copy (seal.json). Recomputation
+    uses only artifact bytes and config_vector from the seal record."""
     artifact_bytes = artifact_path.read_bytes()
     seal_record = canonical_loads(seal_path.read_text())
     return verify_seal(artifact_bytes, seal_record, audit_log_path)
+
+
+def verify_dual_channel_consistency(
+    seal_path: Path,
+    c2pa_path: Path,
+) -> tuple[bool, Optional[str]]:
+    """If both sidecar and c2pa stub exist, verify they contain the same EPW hash.
+    Returns (True, None) if consistent or c2pa missing; (False, reason) if mismatch."""
+    if not seal_path.exists():
+        return False, "SEAL_MISSING"
+    if not c2pa_path.exists():
+        return True, None  # secondary channel optional
+    try:
+        seal_rec = canonical_loads(seal_path.read_text())
+        c2pa_rec = canonical_loads(c2pa_path.read_text())
+    except Exception as e:
+        return False, f"DUAL_CHANNEL_READ_ERROR: {e}"
+    epw_seal = seal_rec.get("epw_hash")
+    epw_c2pa = c2pa_rec.get("epw_hash")
+    if epw_seal is None or epw_c2pa is None:
+        return False, "REQUIRED_FIELD_MISSING"
+    if epw_seal != epw_c2pa:
+        return False, "DUAL_CHANNEL_MISMATCH"
+    return True, None

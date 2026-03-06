@@ -87,3 +87,49 @@ def cache_lookup_with_spotcheck(
     if not spot_check_pass(cached_h1, computed_h1_subset, tolerance):
         return False, None
     return True, entry
+
+
+def mean_abs_diff(a: list[float], b: list[float]) -> float:
+    """Mean absolute difference for spot-check reporting; exported for evidence/reports."""
+    return _mean_abs_diff(a, b)
+
+
+def cache_lookup_with_spotcheck_report(
+    target_id: str,
+    content_fingerprint: str,
+    computed_h1_subset: list[float],
+    root: Optional[Path] = None,
+    tolerance: float = 1e-6,
+    config_vector_hash: Optional[str] = None,
+    schema_version: Optional[str] = None,
+) -> tuple[bool, Optional[dict[str, Any]], dict[str, Any]]:
+    """
+    Like cache_lookup_with_spotcheck but also returns an evidence report dict:
+    cache_hit, cache_reason, validation_subset_size, mean_abs_diff.
+    Optional time_saved_ms can be set by caller from timing.
+    """
+    report: dict[str, Any] = {
+        "cache_hit": False,
+        "cache_reason": "miss",
+        "validation_subset_size": len(computed_h1_subset),
+        "mean_abs_diff": None,
+    }
+    entry = cache_get(target_id, content_fingerprint, root)
+    if entry is None:
+        report["cache_reason"] = "miss_no_entry"
+        return False, None, report
+    if schema_version is not None and entry.get("schema_version") != schema_version:
+        report["cache_reason"] = "miss_schema_mismatch"
+        return False, None, report
+    if config_vector_hash is not None and entry.get("config_vector_hash") != config_vector_hash:
+        report["cache_reason"] = "miss_config_mismatch"
+        return False, None, report
+    cached_h1 = entry.get("h1_subset") or []
+    mad = _mean_abs_diff(cached_h1, computed_h1_subset)
+    report["mean_abs_diff"] = mad
+    if not spot_check_pass(cached_h1, computed_h1_subset, tolerance):
+        report["cache_reason"] = "miss_spotcheck_failed"
+        return False, None, report
+    report["cache_hit"] = True
+    report["cache_reason"] = "hit"
+    return True, entry, report

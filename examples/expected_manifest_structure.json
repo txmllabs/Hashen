@@ -1,0 +1,11 @@
+{
+  "audit_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "files": {
+    "artifact.bin": "<sha256 of artifact>",
+    "audit.jsonl": "<sha256>",
+    "seal.json": "<sha256>",
+    "verify.json": "<sha256>"
+  },
+  "schema_version": "hashen.manifest.v1",
+  "seal_hash": "421c98020e1bc25a79e904a7a83e8c4b2d14aea5a118428fc19c2030d656f793"
+}

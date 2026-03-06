@@ -60,3 +60,12 @@ The **config vector** drives deterministic behavior:
   - **Policy**: AST-based import denylist (e.g. `os`, `socket`, `subprocess`), no network by default, timeout, optional resource limits (Unix).
   - **Policy version / digest**: A fixed policy version and a digest of the denylist can be used for audit binding and to reject runs when policy has changed.
 - The runner does **not** provide container or VM isolation. It is defense-in-depth only. See [LIMITATIONS.md](LIMITATIONS.md).
+
+### Script loading and integrity binding
+
+When the runner is used in a pipeline that produces a seal:
+
+- **Script hash**: The runner computes and can expose `sha256(script_source)`. This should be recorded and passed into the pipeline as **sandbox_metadata.script_sha256** so it is bound into the seal.
+- **Optional signature**: The runner exposes an optional `verify_script_signature` hook (e.g. ed25519). When used, signature verification is a precondition to execution.
+- **Seal binding**: The seal payload accepts **sandbox_metadata** (e.g. `script_sha256`, `policy_digest`, `runtime_mode`, `resource_usage`). These are included in the hashed payload so tampering with runner evidence changes the EPW hash.
+- **Deterministic environment**: Where possible, the runner uses a minimal env and isolated temp dir; these choices can be documented for reproducibility.

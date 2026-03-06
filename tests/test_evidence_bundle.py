@@ -32,6 +32,30 @@ def test_pipeline_audit_chain_verifies_in_process(tmp_path: Path):
     assert ok, reason
 
 
+def test_report_contains_prosecution_friendly_fields(tmp_path: Path):
+    """Per-run report includes schema_version, config_vector_summary, fixed_range, cache."""
+    from hashen.orchestrator import run_pipeline
+    from hashen.utils.canonical_json import canonical_loads
+
+    artifact_bytes = b"report test"
+    config = {"h2_min": 0.0, "h2_max": 4.0, "h2_bins": 16, "h1_subset_size": 32}
+    run_pipeline(artifact_bytes, "report_run", config, root=tmp_path)
+    report_path = tmp_path / "reports" / "report_run.json"
+    assert report_path.exists()
+    report = canonical_loads(report_path.read_text())
+    assert report.get("schema_version") == "hashen.report.v1"
+    assert "config_vector_summary" in report
+    assert report["config_vector_summary"].get("h2_min") == 0.0
+    assert "fixed_range" in report
+    assert report["fixed_range"].get("h2_bins") == 16
+    assert "cache" in report
+    assert "cache_hit" in report["cache"]
+    assert "cache_reason" in report["cache"]
+    assert "validation_subset_size" in report["cache"]
+    assert report.get("audit_head_hash")
+    assert report.get("seal_hash")
+
+
 def test_evidence_bundle_produces_artifact_audit_seal_verify(tmp_path: Path):
     """G7: Tool produces bundle folder with artifact, audit.jsonl, seal.json, verify outputs."""
     artifact_file = tmp_path / "input.bin"

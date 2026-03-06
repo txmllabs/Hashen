@@ -42,6 +42,7 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = ["UP045"]
+per-file-ignores = { "examples/*.py" = ["E402"] }
 
 [tool.ruff.format]
 quote-style = "double"
