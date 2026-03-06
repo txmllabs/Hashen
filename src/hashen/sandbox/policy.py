@@ -6,21 +6,27 @@ import ast
 import hashlib
 
 # Denylist: scripts importing these are blocked (SANDBOX_POLICY_VIOLATION)
+# Includes network/data exfil: socket, urllib, http, ftplib, ssl, requests, etc.
 DENYLIST_IMPORTS: set[str] = {
     "os",
     "subprocess",
     "socket",
-    "requests",
-    "urllib.request",
-    "http.client",
+    "urllib",
+    "urllib2",
+    "http",
     "ftplib",
+    "ssl",
+    "requests",
     "smtplib",
     "telnetlib",
+    "poplib",
+    "imaplib",
+    "nntplib",
     "pickle",
     "shelve",
     "marshal",
     "ctypes",
-    "sys",  # can break out
+    "sys",
     "builtins",
     "__builtins__",
 }

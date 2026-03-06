@@ -27,6 +27,26 @@ def test_seal_determinism_G1(config_vector):
     assert epw1 == epw2
 
 
+def test_seal_same_epw_regardless_of_issued_at(config_vector):
+    """Same artifact + same config + same audit_head_hash -> same epw_hash at different times."""
+    artifact = b"deterministic content"
+    audit_head = "f" * 64
+
+    def clock1() -> str:
+        return "2020-01-01T00:00:00Z"
+
+    def clock2() -> str:
+        return "2025-12-31T23:59:59Z"
+
+    _, epw1 = create_seal(artifact, config_vector, audit_head, clock=clock1)
+    _, epw2 = create_seal(artifact, config_vector, audit_head, clock=clock2)
+    assert epw1 == epw2
+    record1, _ = create_seal(artifact, config_vector, audit_head, clock=clock1)
+    record2, _ = create_seal(artifact, config_vector, audit_head, clock=clock2)
+    assert record1["issued_at"] != record2["issued_at"]
+    assert record1["epw_hash"] == record2["epw_hash"]
+
+
 def test_tamper_fails_G2(config_vector):
     """G2: Modify artifact bytes -> verify returns ok=False, reason=EPW_MISMATCH."""
     artifact = b"original content"

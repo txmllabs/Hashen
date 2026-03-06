@@ -10,6 +10,8 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 | `ARTIFACT_DECODE_FAILED` | Artifact could not be decoded (e.g. invalid format). |
 | `INSUFFICIENT_MODALITIES` | Required modality data missing for seal/report. |
 | `SANDBOX_POLICY_VIOLATION` | Script uses denylisted import (e.g. `os`, `socket`, `subprocess`). |
+| `TIMEOUT` | Script exceeded wall-clock time limit; process group killed. |
+| `RESOURCE_LIMIT` | Script exceeded CPU or memory limit (Unix RLIMIT_CPU/RLIMIT_AS). |
 | `SCRIPT_SIGNATURE_INVALID` | Optional ed25519 script signature verification failed. |
 | `CACHE_SPOTCHECK_FAILED` | Cache entry existed but spot-check (mean abs diff) exceeded tolerance; entry not reused. |
 

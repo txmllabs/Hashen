@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from hashen.analytics import (
     combined_h2,
@@ -30,6 +30,34 @@ def artifact_to_values(artifact_bytes: bytes) -> list[float]:
     return [b / 255.0 for b in artifact_bytes]
 
 
+def compute_deterministic_payload(
+    artifact_bytes: bytes,
+    config_vector: dict[str, Any],
+    audit_head_hash: str,
+    routing_path: Optional[list[str]] = None,
+    resonance: Optional[float] = None,
+    sandbox_metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Build deterministic seal payload (no issued_at). Same inputs -> same dict."""
+    values = artifact_to_values(artifact_bytes)
+    h1_subset = extract_h1_subset(values, config_vector)
+    h2 = entropy_h2(values, config_vector)
+    per_modality_h2 = [h2]
+    comb_h2 = combined_h2(per_modality_h2, config_vector)
+    if resonance is None:
+        resonance = compute_resonance(values, config_vector)
+    return {
+        "h1_subset": h1_subset,
+        "per_modality_h2": per_modality_h2,
+        "combined_h2": comb_h2,
+        "resonance": resonance,
+        "routing_path": routing_path or [],
+        "config_vector": config_vector,
+        "audit_head_hash": audit_head_hash,
+        "sandbox_metadata": sandbox_metadata,
+    }
+
+
 def compute_seal_payload(
     artifact_bytes: bytes,
     config_vector: dict[str, Any],
@@ -38,26 +66,15 @@ def compute_seal_payload(
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Build canonical seal record (no epw_hash yet). Deterministic for same inputs."""
-    values = artifact_to_values(artifact_bytes)
-    h1_subset = extract_h1_subset(values, config_vector)
-    h2 = entropy_h2(values, config_vector)
-    per_modality_h2 = [h2]  # single modality for MVP
-    comb_h2 = combined_h2(per_modality_h2, config_vector)
-    if resonance is None:
-        resonance = compute_resonance(values, config_vector)
-    payload = {
-        "h1_subset": h1_subset,
-        "per_modality_h2": per_modality_h2,
-        "combined_h2": comb_h2,
-        "resonance": resonance,
-        "routing_path": routing_path or [],
-        "timestamp": utc_iso_now(),
-        "config_vector": config_vector,
-        "audit_head_hash": audit_head_hash,
-        "sandbox_metadata": sandbox_metadata,
-    }
-    return payload
+    """Alias for backward compatibility; returns deterministic payload only."""
+    return compute_deterministic_payload(
+        artifact_bytes,
+        config_vector,
+        audit_head_hash,
+        routing_path=routing_path,
+        resonance=resonance,
+        sandbox_metadata=sandbox_metadata,
+    )
 
 
 def create_seal(
@@ -68,14 +85,15 @@ def create_seal(
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
     root: Optional[Path] = None,
+    clock: Optional[Callable[[], str]] = None,
 ) -> tuple[dict[str, Any], str]:
     """
     Create seal record, compute EPW hash, return (full_record, epw_hash).
-    Does NOT write to disk; caller may write to seals/ and c2pa_stub/.
+    Hashed payload is deterministic; issued_at is envelope-only (clock injection for tests).
     """
     if not config_vector:
         raise ValueError(CONFIG_VECTOR_MISSING)
-    payload = compute_seal_payload(
+    payload = compute_deterministic_payload(
         artifact_bytes,
         config_vector,
         audit_head_hash,
@@ -83,10 +101,9 @@ def create_seal(
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
     )
-    # EPW excludes timestamp so verifier can recompute same hash from artifact + config
-    payload_no_ts = {k: v for k, v in payload.items() if k != "timestamp"}
-    epw_hash = sha256_canonical(payload_no_ts)
-    full_record = {**payload, "epw_hash": epw_hash}
+    epw_hash = sha256_canonical(payload)
+    issued_at = utc_iso_now(clock=clock)
+    full_record = {**payload, "issued_at": issued_at, "epw_hash": epw_hash}
     return full_record, epw_hash
 
 
@@ -111,8 +128,8 @@ def verify_seal(
     audit_log_path: Optional[Path] = None,
 ) -> tuple[bool, Optional[str]]:
     """
-    Recompute H1/H2 from artifact using config_vector; verify audit chain if path given;
-    recompute EPW and compare. Return (ok, reason_code or None).
+    Recompute deterministic payload from artifact; verify audit chain if path given;
+    recompute EPW and compare. issued_at does not affect verification.
     """
     config = seal_record.get("config_vector")
     if not config:
@@ -124,7 +141,7 @@ def verify_seal(
             return False, AUDIT_CHAIN_BROKEN
         if result.audit_head_hash != audit_head:
             return False, AUDIT_CHAIN_BROKEN
-    payload = compute_seal_payload(
+    payload = compute_deterministic_payload(
         artifact_bytes,
         config,
         audit_head,
@@ -132,9 +149,7 @@ def verify_seal(
         resonance=seal_record.get("resonance"),
         sandbox_metadata=seal_record.get("sandbox_metadata"),
     )
-    # EPW is over payload without timestamp so verification is deterministic.
-    payload_no_ts = {k: v for k, v in payload.items() if k != "timestamp"}
-    computed_epw = sha256_canonical(payload_no_ts)
+    computed_epw = sha256_canonical(payload)
     stored_epw = seal_record.get("epw_hash")
     if not stored_epw:
         return False, EPW_MISMATCH
