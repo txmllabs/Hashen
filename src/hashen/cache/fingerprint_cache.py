@@ -37,12 +37,15 @@ def cache_get(
     content_fingerprint: str,
     root: Optional[Path] = None,
 ) -> Optional[dict[str, Any]]:
-    """Load cache entry if present."""
+    """Load cache entry if present. Corrupted or invalid JSON yields None (fail closed)."""
     key = sha256_bytes((target_id + content_fingerprint).encode())
     path = get_cache_path(root, key)
     if not path.exists():
         return None
-    return canonical_loads(path.read_text())
+    try:
+        return canonical_loads(path.read_text())
+    except Exception:
+        return None
 
 
 def cache_set(
@@ -65,13 +68,20 @@ def cache_lookup_with_spotcheck(
     computed_h1_subset: list[float],
     root: Optional[Path] = None,
     tolerance: float = 1e-6,
+    config_vector_hash: Optional[str] = None,
+    schema_version: Optional[str] = None,
 ) -> tuple[bool, Optional[dict[str, Any]]]:
     """
-    Cache hit only when entry exists AND spot-check passes.
-    Returns (hit, entry or None).
+    Cache hit only when entry exists, spot-check passes, and (if provided)
+    config_vector_hash and schema_version match. Returns (hit, entry or None).
+    Fail closed: invalid or mismatched entry yields miss.
     """
     entry = cache_get(target_id, content_fingerprint, root)
     if entry is None:
+        return False, None
+    if schema_version is not None and entry.get("schema_version") != schema_version:
+        return False, None
+    if config_vector_hash is not None and entry.get("config_vector_hash") != config_vector_hash:
         return False, None
     cached_h1 = entry.get("h1_subset") or []
     if not spot_check_pass(cached_h1, computed_h1_subset, tolerance):

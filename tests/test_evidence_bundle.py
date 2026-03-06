@@ -148,3 +148,114 @@ def test_tamper_then_verify_fails(tmp_path: Path):
         or "EPW_MISMATCH" in proc_fail.stdout
         or "Error" in proc_fail.stderr
     )
+
+
+def test_missing_seal_fails_verify(tmp_path: Path):
+    """Bundle missing seal.json fails verification."""
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "artifact.bin").write_bytes(b"x")
+    (bundle_dir / "audit.jsonl").write_text(
+        '{"event_type":"INGEST","prev_hash":"","event_hash":"y"}\n'
+    )
+    # No seal.json
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "verify_bundle.py"),
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+    assert "seal" in proc.stderr.lower() or "Error" in proc.stderr
+
+
+def test_altered_manifest_fails_manifest_verify(tmp_path: Path):
+    """Altering manifest.json causes manifest verification to fail."""
+    from hashen.provenance.bundle_manifest import verify_bundle_manifest, write_bundle_manifest
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "artifact.bin").write_bytes(b"a")
+    (bundle_dir / "seal.json").write_text('{"epw_hash":"x"}')
+    write_bundle_manifest(bundle_dir)
+    ok, _ = verify_bundle_manifest(bundle_dir)
+    assert ok is True
+    # Alter manifest so a file hash is wrong
+    manifest_path = bundle_dir / "manifest.json"
+    import json
+
+    m = json.loads(manifest_path.read_text())
+    m["files"]["artifact.bin"] = "wrong_hash"
+    manifest_path.write_text(json.dumps(m))
+    ok2, reason = verify_bundle_manifest(bundle_dir)
+    assert ok2 is False
+    assert "MANIFEST_HASH_MISMATCH" in reason or "artifact" in reason
+
+
+def test_altered_artifact_fails_seal_verify(tmp_path: Path):
+    """Altering artifact in bundle causes seal (EPW) or manifest verification to fail."""
+    artifact_file = tmp_path / "in.bin"
+    artifact_file.write_bytes(b"original content")
+    bundle_dir = tmp_path / "bundle"
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "run_evidence_bundle.py"),
+            str(artifact_file),
+            "alter-run",
+            "--output-dir",
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+    )
+    (bundle_dir / "artifact.bin").write_bytes(b"tampered content")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "verify_bundle.py"),
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+
+
+def test_altered_audit_fails_chain_or_manifest(tmp_path: Path):
+    """Altering audit.jsonl causes audit chain or manifest verification to fail."""
+    artifact_file = tmp_path / "in.bin"
+    artifact_file.write_bytes(b"x")
+    bundle_dir = tmp_path / "bundle"
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "run_evidence_bundle.py"),
+            str(artifact_file),
+            "audit-run",
+            "--output-dir",
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+    )
+    audit_path = bundle_dir / "audit.jsonl"
+    lines = audit_path.read_text().strip().split("\n")
+    if lines:
+        lines[0] = lines[0][:-1] + " "
+        audit_path.write_text("\n".join(lines) + "\n")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "verify_bundle.py"),
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0

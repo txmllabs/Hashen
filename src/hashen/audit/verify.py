@@ -37,6 +37,18 @@ def verify_audit_chain(log_path: Path) -> AuditVerifyResult:
                     audit_head_hash="",
                     reason=f"AUDIT_CHAIN_BROKEN: line {line_no} invalid JSON: {e}",
                 )
+            if ev.get("event_type") is None:
+                return AuditVerifyResult(
+                    ok=False,
+                    audit_head_hash="",
+                    reason="AUDIT_CHAIN_BROKEN: missing event_type",
+                )
+            if ev.get("prev_hash") is None:
+                return AuditVerifyResult(
+                    ok=False,
+                    audit_head_hash="",
+                    reason="AUDIT_CHAIN_BROKEN: missing prev_hash",
+                )
             if ev.get("prev_hash") != expected_prev:
                 return AuditVerifyResult(
                     ok=False,

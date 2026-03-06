@@ -26,6 +26,12 @@ CONFIG_VECTOR_MISSING = "CONFIG_VECTOR_MISSING"
 AUDIT_CHAIN_BROKEN = "AUDIT_CHAIN_BROKEN"
 ARTIFACT_DECODE_FAILED = "ARTIFACT_DECODE_FAILED"
 INSUFFICIENT_MODALITIES = "INSUFFICIENT_MODALITIES"
+SCHEMA_VERSION_UNSUPPORTED = "SCHEMA_VERSION_UNSUPPORTED"
+POLICY_DIGEST_MISMATCH = "POLICY_DIGEST_MISMATCH"
+MANIFEST_HASH_MISMATCH = "MANIFEST_HASH_MISMATCH"
+REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"
+
+SUPPORTED_SEAL_SCHEMA_VERSIONS = frozenset({SEAL_SCHEMA_VERSION})
 
 # Keys excluded from hashed payload (non-deterministic or envelope-only)
 _NON_DETERMINISTIC_KEYS = frozenset(
@@ -56,6 +62,11 @@ def artifact_to_values(artifact_bytes: bytes) -> list[float]:
     return [b / 255.0 for b in artifact_bytes]
 
 
+def config_vector_hash(config_vector: dict[str, Any]) -> str:
+    """Deterministic hash of config vector for binding and cache validation."""
+    return sha256_canonical(config_vector)
+
+
 def compute_deterministic_payload(
     artifact_bytes: bytes,
     config_vector: dict[str, Any],
@@ -63,6 +74,8 @@ def compute_deterministic_payload(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
+    include_config_vector_hash: bool = True,
 ) -> dict[str, Any]:
     """Build deterministic seal payload (no issued_at). Same inputs -> same dict."""
     values = artifact_to_values(artifact_bytes)
@@ -72,7 +85,7 @@ def compute_deterministic_payload(
     comb_h2 = combined_h2(per_modality_h2, config_vector)
     if resonance is None:
         resonance = compute_resonance(values, config_vector)
-    return {
+    payload = {
         "schema_version": SEAL_SCHEMA_VERSION,
         "h1_subset": h1_subset,
         "per_modality_h2": per_modality_h2,
@@ -83,6 +96,11 @@ def compute_deterministic_payload(
         "audit_head_hash": audit_head_hash,
         "sandbox_metadata": sandbox_metadata,
     }
+    if include_config_vector_hash:
+        payload["config_vector_hash"] = config_vector_hash(config_vector)
+    if policy_digest is not None:
+        payload["policy_digest"] = policy_digest
+    return payload
 
 
 def compute_seal_payload(
@@ -92,6 +110,7 @@ def compute_seal_payload(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
 ) -> dict[str, Any]:
     """Alias for backward compatibility; returns deterministic payload only."""
     return compute_deterministic_payload(
@@ -101,6 +120,7 @@ def compute_seal_payload(
         routing_path=routing_path,
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
+        policy_digest=policy_digest,
     )
 
 
@@ -111,6 +131,7 @@ def create_seal(
     routing_path: Optional[list[str]] = None,
     resonance: Optional[float] = None,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    policy_digest: Optional[str] = None,
     root: Optional[Path] = None,
     clock: Optional[Callable[[], str]] = None,
 ) -> tuple[dict[str, Any], str]:
@@ -127,6 +148,7 @@ def create_seal(
         routing_path=routing_path,
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
+        policy_digest=policy_digest,
     )
     epw_hash = compute_epw_hash(payload)
     issued_at = utc_iso_now(clock=clock)
@@ -161,6 +183,11 @@ def verify_seal(
     config = seal_record.get("config_vector")
     if not config:
         return False, CONFIG_VECTOR_MISSING
+    if not seal_record.get("epw_hash"):
+        return False, REQUIRED_FIELD_MISSING
+    schema_ver = seal_record.get("schema_version")
+    if schema_ver and schema_ver not in SUPPORTED_SEAL_SCHEMA_VERSIONS:
+        return False, SCHEMA_VERSION_UNSUPPORTED
     audit_head = seal_record.get("audit_head_hash", "")
     if audit_log_path and audit_log_path.exists():
         result = verify_audit_chain(audit_log_path)
@@ -168,6 +195,7 @@ def verify_seal(
             return False, AUDIT_CHAIN_BROKEN
         if result.audit_head_hash != audit_head:
             return False, AUDIT_CHAIN_BROKEN
+    include_cvh = "config_vector_hash" in seal_record
     payload = compute_deterministic_payload(
         artifact_bytes,
         config,
@@ -175,6 +203,8 @@ def verify_seal(
         routing_path=seal_record.get("routing_path"),
         resonance=seal_record.get("resonance"),
         sandbox_metadata=seal_record.get("sandbox_metadata"),
+        policy_digest=seal_record.get("policy_digest"),
+        include_config_vector_hash=include_cvh,
     )
     computed_epw = compute_epw_hash(payload)
     stored_epw = seal_record.get("epw_hash")

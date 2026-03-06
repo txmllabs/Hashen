@@ -9,7 +9,7 @@ The following threats are in scope: **cache poisoning**, **metadata stripping**,
 | Threat | Mitigation |
 |--------|------------|
 | **Cache poisoning / stale reuse** | Cache key is content-based (`sha256(target_id + content_fingerprint)`). Spot-check recomputes reduced subset and compares mean abs diff ≤ tolerance; reuse only if pass. |
-| **Script RCE** | Secure sandbox runner: import allowlist (denylist of `os`, `subprocess`, `socket`, `requests`, etc.), no network by default, read-only FS except sandbox temp, env cleared, CPU/memory/wall-clock limits. Optional ed25519 signature verification. |
+| **Script RCE** | Restricted execution runner: import denylist (`os`, `subprocess`, `socket`, `requests`, etc.), no network by default, isolated temp dir, env cleared, CPU/memory/wall-clock limits. Optional script SHA-256 or signature verification. Not container-grade isolation (see LIMITATIONS). |
 | **Supply chain compromise** | Pinned dependencies, SBOM (CycloneDX) to `sbom/bom.json`, `pip-audit` in CI (fail on high severity). |
 | **Audit log tampering** | Hash-chained audit log: each event has `prev_hash` and `event_hash`; verifier detects missing or modified lines and returns `AUDIT_CHAIN_BROKEN`. |
 | **Metadata stripping** | Dual-channel seal (sidecar `seals/<digest>.seal.json` + C2PA-stub); verifier recomputes H1/H2 from artifact content using `config_vector`. |

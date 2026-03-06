@@ -6,6 +6,10 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 |------|---------|
 | `EPW_MISMATCH` | Recomputed EPW hash does not match stored seal; artifact or seal was tampered. |
 | `CONFIG_VECTOR_MISSING` | Seal record has no `config_vector`; verification cannot recompute. |
+| `REQUIRED_FIELD_MISSING` | Seal missing required field (e.g. `epw_hash`). |
+| `SCHEMA_VERSION_UNSUPPORTED` | Seal `schema_version` is not supported by this verifier. |
+| `POLICY_DIGEST_MISMATCH` | Policy digest in seal does not match (binding violation). |
+| `MANIFEST_HASH_MISMATCH` | Bundle manifest file hash does not match listed hash. |
 | `AUDIT_CHAIN_BROKEN` | Audit log chain invalid: `prev_hash` or `event_hash` mismatch or invalid line. |
 | `ARTIFACT_DECODE_FAILED` | Artifact could not be decoded (e.g. invalid format). |
 | `INSUFFICIENT_MODALITIES` | Required modality data missing for seal/report. |

@@ -1,5 +1,9 @@
 # Security
 
+## Supported versions
+
+We provide security updates for the **current minor** (e.g. 0.1.x). Upgrade to the latest patch in that line to receive fixes.
+
 ## Reporting vulnerabilities
 
 If you believe you have found a security vulnerability in Hashen, please report it responsibly:
@@ -8,11 +12,17 @@ If you believe you have found a security vulnerability in Hashen, please report 
 - Email **developer@txmllabs.com** with a description of the issue, steps to reproduce, and impact.
 - We will acknowledge receipt and work with you to understand and address the finding.
 
+## Implementation caveats
+
+- **Runner**: The restricted execution runner uses a subprocess plus import denylist and resource limits. It is **not** container or VM isolation; a determined attacker can bypass the denylist. Use for defense-in-depth only (see [docs/LIMITATIONS.md](docs/LIMITATIONS.md)).
+- **Seal/Audit**: Verification is deterministic and binding; tampering is detected with explicit reason codes. Signature support (e.g. ed25519) is optional and may not be enabled in your build.
+- **Cache**: Reuse is keyed by content fingerprint and config; corrupted or mismatched cache entries are rejected (fail closed).
+
 ## In scope
 
-- The Hashen trust layer codebase: seal (EPW), audit chain, sandbox runner, cache, compliance, and CLI tools.
+- The Hashen trust layer codebase: seal (EPW), audit chain, restricted execution runner, cache, compliance, and CLI tools.
 - Supply chain: dependency vulnerabilities (we use pip-audit and SBOM in CI).
-- Configuration and usage that could lead to bypass of sandbox or verification.
+- Configuration and usage that could lead to bypass of verification or runner policy.
 
 ## Out of scope
 

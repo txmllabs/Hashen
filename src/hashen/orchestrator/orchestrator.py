@@ -8,8 +8,10 @@ from typing import Any, Optional
 from hashen.analytics import combined_h2, compute_resonance, entropy_h2, extract_h1_subset
 from hashen.audit import EventLog
 from hashen.cache import cache_entry, cache_lookup_with_spotcheck, cache_set
+from hashen.cache.models import CACHE_SCHEMA_VERSION
 from hashen.compliance.reporting import build_report, write_report
-from hashen.provenance.seal import create_seal, write_seal
+from hashen.provenance.seal import config_vector_hash, create_seal, write_seal
+from hashen.utils.clock import utc_iso_now
 from hashen.utils.hashing import sha256_bytes
 
 
@@ -39,7 +41,15 @@ def run_pipeline(
     resonance = compute_resonance(values, config_vector)
     log.append("FEATURE_EXTRACT", {})
     content_fingerprint = sha256_bytes(artifact_bytes)
-    hit, cached = cache_lookup_with_spotcheck(target_id, content_fingerprint, h1_subset, root=root)
+    cv_hash = config_vector_hash(config_vector)
+    hit, cached = cache_lookup_with_spotcheck(
+        target_id,
+        content_fingerprint,
+        h1_subset,
+        root=root,
+        config_vector_hash=cv_hash,
+        schema_version=CACHE_SCHEMA_VERSION,
+    )
     if hit:
         log.append("CACHE_HIT", {})
     else:
@@ -47,7 +57,13 @@ def run_pipeline(
         cache_set(
             target_id,
             content_fingerprint,
-            cache_entry(h1_subset, per_modality_h2, resonance),
+            cache_entry(
+                h1_subset,
+                per_modality_h2,
+                resonance,
+                config_vector_hash=cv_hash,
+                created_at=utc_iso_now(),
+            ),
             root=root,
         )
     log.append("ROUTE", {"path": []})

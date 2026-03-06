@@ -5,9 +5,12 @@ from __future__ import annotations
 import pytest
 
 from hashen.provenance.seal import (
+    REQUIRED_FIELD_MISSING,
+    SCHEMA_VERSION_UNSUPPORTED,
     SEAL_SCHEMA_VERSION,
     build_hashed_payload,
     compute_epw_hash,
+    config_vector_hash,
     create_seal,
     verify_seal,
     verify_seal_file,
@@ -136,3 +139,53 @@ def test_tamper_artifact_file_fails(config_vector, tmp_path):
     ok, reason = verify_seal_file(artifact_file, seal_path)
     assert ok is False
     assert reason == "EPW_MISMATCH"
+
+
+def test_missing_epw_hash_returns_REQUIRED_FIELD_MISSING(config_vector):
+    """Seal with config but no epw_hash -> REQUIRED_FIELD_MISSING."""
+    ok, reason = verify_seal(b"x", {"config_vector": config_vector, "audit_head_hash": "a" * 64})
+    assert ok is False
+    assert reason == REQUIRED_FIELD_MISSING
+
+
+def test_unsupported_schema_version_returns_SCHEMA_VERSION_UNSUPPORTED(config_vector):
+    """Seal with unsupported schema_version -> SCHEMA_VERSION_UNSUPPORTED."""
+    full_record, epw = create_seal(b"x", config_vector, "a" * 64)
+    full_record["schema_version"] = "hashen.seal.unknown"
+    full_record["epw_hash"] = epw
+    ok, reason = verify_seal(b"x", full_record)
+    assert ok is False
+    assert reason == SCHEMA_VERSION_UNSUPPORTED
+
+
+def test_altered_config_vector_fails_epw(config_vector):
+    """Altering config_vector in seal changes recomputed payload -> EPW_MISMATCH."""
+    artifact = b"same"
+    audit_head = "a" * 64
+    full_record, _ = create_seal(artifact, config_vector, audit_head)
+    full_record["config_vector"] = {**config_vector, "h2_bins": 8}
+    ok, reason = verify_seal(artifact, full_record)
+    assert ok is False
+    assert reason == "EPW_MISMATCH"
+
+
+def test_config_vector_hash_in_payload(config_vector):
+    """New seals include config_vector_hash in hashed payload."""
+    artifact = b"cvh"
+    audit_head = "a" * 64
+    full_record, _ = create_seal(artifact, config_vector, audit_head)
+    assert "config_vector_hash" in full_record
+    assert full_record["config_vector_hash"] == config_vector_hash(config_vector)
+
+
+def test_policy_digest_binding(config_vector):
+    """Seal with policy_digest binds it; verifier must use same digest."""
+    artifact = b"policy"
+    audit_head = "a" * 64
+    full_record, _ = create_seal(artifact, config_vector, audit_head, policy_digest="abc123digest")
+    assert full_record.get("policy_digest") == "abc123digest"
+    ok, reason = verify_seal(artifact, full_record)
+    assert ok is True
+    full_record["policy_digest"] = "wrong"
+    ok2, _ = verify_seal(artifact, full_record)
+    assert ok2 is False
