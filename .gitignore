@@ -36,6 +36,7 @@ sample.bin
 sample_tiny.bin
 _final_demo/
 demo_out/
+phase5_demo/
 
 # Secrets and keys
 .env
