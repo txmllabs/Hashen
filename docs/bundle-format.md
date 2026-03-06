@@ -9,7 +9,7 @@ bundle/
   artifact.bin       # or "artifact" – copy of the input artifact
   seal.json         # Provenance seal (EPW hash, config_vector, audit_head_hash, etc.)
   audit.jsonl       # Hash-chained audit log (one JSON object per line)
-  verify.json       # Verification result (ok, reason, seal_hash, audit_head_hash)
+  verify.json       # In-bundle verification snapshot (ok, reason, seal_hash, audit_head_hash)
   report.json       # Optional per-run compliance report
   manifest.json     # File inventory and SHA-256 per file (does not list itself)
 ```
@@ -43,4 +43,4 @@ The manifest does **not** include itself in the file inventory to avoid circular
   - If `report_hash` is present and `report.json` is present, it must match the report file hash.
 - **Report** (if present): Optionally check schema and consistency of `seal_hash` / `audit_head_hash` with seal and audit.
 
-See [verification-model.md](verification-model.md) for reason codes and pass/fail semantics.
+The **`hashen verify`** command runs full verification and outputs the complete **VerificationResult** (including `reason_codes`, `checked_files`, `errors`, `warnings`, and all validity flags). The in-bundle `verify.json` is a minimal snapshot written at bundle creation time; re-running `hashen verify` or `hashen-verify` recomputes and returns the full result. See [verification-model.md](verification-model.md) for reason codes, output shape, and fatal vs warning semantics.

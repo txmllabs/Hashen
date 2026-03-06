@@ -86,6 +86,7 @@ def main() -> int:
     if seal_path.exists():
         shutil.copy2(seal_path, seal_dest)
     seal_record = canonical_loads(seal_path.read_text()) if seal_path.exists() else {}
+    # In-bundle verify.json snapshot (bundle creation only). Full verify: hashen.verification.
     audit_for_verify = root / "audit" / f"{args.run_id}.jsonl"
     ok, reason = verify_seal(
         artifact_bytes,

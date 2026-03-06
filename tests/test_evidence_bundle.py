@@ -231,10 +231,13 @@ def test_tamper_then_verify_fails(tmp_path: Path):
         text=True,
     )
     assert proc_fail.returncode != 0
+    out, err = proc_fail.stdout, proc_fail.stderr
     assert (
-        "FAILED" in proc_fail.stdout
-        or "EPW_MISMATCH" in proc_fail.stdout
-        or "Error" in proc_fail.stderr
+        "FAILED" in out
+        or "EPW_MISMATCH" in out
+        or "Error" in err
+        or "FAILED" in err
+        or "EPW_MISMATCH" in err
     )
 
 

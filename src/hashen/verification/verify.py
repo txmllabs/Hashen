@@ -28,6 +28,17 @@ MANIFEST_INCONSISTENT = "MANIFEST_INCONSISTENT"
 UNSUPPORTED_SCHEMA_VERSION = "UNSUPPORTED_SCHEMA_VERSION"
 
 
+def _extract_reason_codes(errors: list[str], warnings: list[str]) -> list[str]:
+    """Derive stable reason codes from error/warning strings (e.g. 'CODE: detail' -> CODE)."""
+    codes: set[str] = set()
+    for s in errors + warnings:
+        if ": " in s:
+            codes.add(s.split(": ")[0].strip())
+        elif s:
+            codes.add(s.split(":")[0].strip() if ":" in s else s)
+    return sorted(codes)
+
+
 @dataclass
 class VerificationResult:
     """Structured verification outcome: pass/fail, per-component validity, errors, warnings."""
@@ -44,6 +55,8 @@ class VerificationResult:
     reason: Optional[str] = None
     seal_hash: Optional[str] = None
     audit_head_hash: Optional[str] = None
+    reason_codes: list[str] = field(default_factory=list)
+    checked_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Machine-readable dict (e.g. for JSON output)."""
@@ -60,6 +73,8 @@ class VerificationResult:
             "reason": self.reason,
             "seal_hash": self.seal_hash,
             "audit_head_hash": self.audit_head_hash,
+            "reason_codes": self.reason_codes,
+            "checked_files": self.checked_files,
         }
 
 
@@ -70,9 +85,12 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     """
     root = bundle_root.resolve()
     result = VerificationResult(ok=False)
+    checked: list[str] = []
 
     if not root.is_dir():
         result.errors.append(f"{MISSING_FILE}: not a directory: {root}")
+        result.reason_codes = _extract_reason_codes(result.errors, result.warnings)
+        result.checked_files = list(checked)
         return result
 
     # Artifact
@@ -81,7 +99,10 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
         artifact_path = root / "artifact"
     if not artifact_path.exists():
         result.errors.append(f"{MISSING_FILE}: artifact.bin or artifact")
+        result.reason_codes = _extract_reason_codes(result.errors, result.warnings)
+        result.checked_files = list(checked)
         return result
+    checked.append(artifact_path.name)
 
     # Seal
     seal_path = root / "seal.json"
@@ -92,11 +113,14 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     if not seal_path or not seal_path.exists():
         result.errors.append(f"{MISSING_FILE}: seal.json")
         return result
+    checked.append("seal.json")
 
     try:
         seal_record = canonical_loads(seal_path.read_text())
     except Exception as e:
         result.errors.append(f"{MALFORMED_JSON}: seal.json: {e}")
+        result.reason_codes = _extract_reason_codes(result.errors, result.warnings)
+        result.checked_files = list(checked)
         return result
 
     valid_seal_schema, schema_errors = validate_seal(seal_record)
@@ -143,6 +167,7 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     manifest_path = root / MANIFEST_FILENAME
     result.manifest_present = manifest_path.exists()
     if result.manifest_present:
+        checked.append(MANIFEST_FILENAME)
         ok_manifest, reason_manifest = verify_bundle_manifest(root)
         if not ok_manifest:
             result.errors.append(reason_manifest or MANIFEST_INCONSISTENT)
@@ -154,6 +179,7 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     report_path = root / "report.json"
     result.report_present = report_path.exists()
     if result.report_present:
+        checked.append("report.json")
         try:
             report_data = canonical_loads(report_path.read_text())
             valid_report, report_schema_errors = validate_report(report_data)
@@ -188,6 +214,8 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     )
     if result.errors and not result.reason:
         result.reason = result.errors[0].split(":")[0] if result.errors else None
+    result.reason_codes = _extract_reason_codes(result.errors, result.warnings)
+    result.checked_files = checked
     return result
 
 

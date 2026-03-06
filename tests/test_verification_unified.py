@@ -69,6 +69,11 @@ def test_verify_bundle_result_dict(valid_bundle: Path):
     assert d["seal_valid"] is True
     assert "seal_hash" in d
     assert "errors" in d
+    assert "reason_codes" in d
+    assert "checked_files" in d
+    assert isinstance(d["checked_files"], list)
+    assert "seal.json" in d["checked_files"]
+    assert "artifact.bin" in d["checked_files"] or "artifact" in d["checked_files"]
 
 
 def test_verification_result_to_dict():

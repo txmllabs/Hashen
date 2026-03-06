@@ -10,7 +10,7 @@ Hashen artifacts (seal, report, bundle manifest, audit event, verification resul
 | Report | `hashen.report.v1` | report.json |
 | Bundle manifest | `hashen.manifest.v1` | manifest.json |
 | Audit event | `hashen.audit.v1` | each line of audit.jsonl |
-| Verification result | (no fixed const) | output of `hashen verify` |
+| Verification result | (no fixed const) | output of `hashen verify` (VerificationResult: ok, errors, warnings, reason_codes, checked_files, etc.) |
 
 JSON Schema definitions are under `schemas/` in the repo and shipped in the package for validation.
 

@@ -32,6 +32,15 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 
 These codes are returned in verification results, runner results, and compliance reports (`reason_codes`). Verifiers and the CLI exit non-zero and emit the code to stderr or in structured output.
 
+## Verification: fatal vs warning
+
+Unified verification (`hashen verify`, `hashen-verify`, `hashen bundle doctor`) uses a single path and the same fatal vs warning rules:
+
+- **Fatal** (verification fails, non-zero exit): `MISSING_FILE`, `MALFORMED_JSON`, `EPW_MISMATCH`, `SEAL_REPRODUCE_FAILED`, `AUDIT_CHAIN_BROKEN`, `REPORT_INCONSISTENT` (when report present), `MANIFEST_INCONSISTENT` (and manifest-specific codes such as `MANIFEST_HASH_MISMATCH`, `MANIFEST_SEAL_HASH_MISMATCH`, `MANIFEST_FILE_MISSING`, etc.), `UNSUPPORTED_SCHEMA_VERSION`.
+- **Warning** (recorded in `warnings`; verification can still pass): `SCHEMA_INVALID` for seal or report when EPW recomputation and cross-file checks succeed.
+
+See [verification-model.md](verification-model.md) for the full verification flow and output shape.
+
 ## Example failure scenarios
 
 | Scenario | What happens | Code(s) |

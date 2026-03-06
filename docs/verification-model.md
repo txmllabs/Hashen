@@ -16,17 +16,23 @@ The verification command (e.g. `hashen verify <bundle_dir>`) runs one coherent f
 
 ## Output shape
 
-Verification result is a JSON object (default output of `hashen verify`):
+The verification result is a JSON object (default output of `hashen verify`). All of `hashen verify`, `hashen-verify --json`, and `hashen bundle doctor` use the same underlying `verify_bundle` path; `hashen-verify` and bundle doctor map this result to their own output shapes for backward compatibility.
+
+**Full `VerificationResult` fields (e.g. `hashen verify`):**
 
 - **ok**: `true` only if all required checks pass and there are no fatal errors.
 - **seal_valid**: Seal recomputation matched stored epw_hash.
 - **audit_chain_valid**: Audit chain verified and head matched seal (or no audit file).
-- **report_present** / **report_valid**: Report file and schema validity.
+- **report_present** / **report_valid**: Report file presence and schema validity.
 - **manifest_present** / **manifest_valid**: Manifest file and per-file hash checks.
-- **errors**: List of fatal error messages (e.g. EPW_MISMATCH, REPORT_INCONSISTENT).
+- **errors**: List of fatal error messages (e.g. `EPW_MISMATCH`, `REPORT_INCONSISTENT`).
 - **warnings**: Non-fatal findings (e.g. schema validation warnings).
 - **reason**: Short reason code (e.g. first error code).
+- **reason_codes**: Sorted list of stable codes derived from errors and warnings (e.g. `MISSING_FILE`, `EPW_MISMATCH`, `MANIFEST_INCONSISTENT`).
+- **checked_files**: List of bundle files actually checked (e.g. `artifact.bin`, `seal.json`, `audit.jsonl`, `manifest.json`, `report.json`).
 - **seal_hash**, **audit_head_hash**: When available.
+
+**Legacy `hashen-verify --json`** outputs a subset: `ok`, `reason`, `audit_head_hash`, `seal_hash` (unchanged for backward compatibility). **`hashen bundle doctor`** outputs `ok`, `fatal` (same as `errors`), `warnings`, `path`.
 
 ## Reason codes
 
@@ -44,10 +50,12 @@ Verification result is a JSON object (default output of `hashen verify`):
 
 ## Fatal vs warning semantics
 
-- **Fatal** (verification fails, exit non-zero): missing required bundle files (artifact/seal), malformed JSON, seal EPW mismatch, audit chain broken, manifest mismatch (when manifest exists), report inconsistencies (when report exists), unsupported schema version.
-- **Warnings** (verification can still pass): schema validation failures for seal/report when core recomputation checks pass.
+Verification **fails** (exit non-zero, `ok` false) when any **fatal** condition is present. **Warnings** do not by themselves cause failure.
 
-See [REASON_CODES.md](REASON_CODES.md) for the full list used across seal, audit, runner, and cache.
+- **Fatal** (verification fails): missing required bundle files (artifact, seal); malformed JSON in seal, report, or manifest; seal EPW mismatch (artifact or seal tampered); audit chain broken or seal/audit head mismatch; manifest missing/invalid or any manifest-listed file missing or hash mismatch; manifest metadata mismatch (content_fingerprint, seal_hash, audit_head_hash, report_hash when present); report present but seal_hash or audit_head_hash inconsistent with seal/audit; unsupported schema version (seal or manifest).
+- **Warnings** (verification can still pass): schema validation failures for seal or report when core recomputation and cross-checks pass (e.g. extra or unknown fields). These are recorded in `warnings` and may appear in `reason_codes`.
+
+See [REASON_CODES.md](REASON_CODES.md) for the full code list and verification-specific fatal vs warning mapping.
 
 ## Exit codes
 

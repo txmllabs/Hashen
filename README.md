@@ -58,7 +58,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/ARCHITECTURE.md](docs
 
 1. **Produce evidence**: Ingest artifact → run pipeline (analytics, cache lookup, audit events, seal) → write bundle (artifact, audit, seal, verify output, optional manifest).
 2. **Verify**: Load artifact and seal; recompute deterministic payload from artifact + `config_vector`; compare EPW hash to seal; if audit path given, verify chain and `audit_head_hash`.
-3. **Outcome**: `ok` plus optional reason code (e.g. `EPW_MISMATCH`, `AUDIT_CHAIN_BROKEN`, `CONFIG_VECTOR_MISSING`). See [docs/REASON_CODES.md](docs/REASON_CODES.md).
+3. **Outcome**: Structured result with `ok`, `seal_valid`, `audit_chain_valid`, `errors`, `warnings`, `reason_codes`, and `checked_files`. See [docs/verification-model.md](docs/verification-model.md) and [docs/REASON_CODES.md](docs/REASON_CODES.md).
 
 ---
 
