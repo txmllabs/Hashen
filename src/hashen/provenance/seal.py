@@ -13,12 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from hashen.analytics import (
-    combined_h2,
-    compute_resonance,
-    entropy_h2,
-    extract_h1_subset,
-)
+from hashen.analytics.tsec import compute_seal_analytics
 from hashen.audit.verify import verify_audit_chain
 from hashen.utils.canonical_json import canonical_dumps, canonical_loads
 from hashen.utils.clock import utc_iso_now
@@ -86,13 +81,12 @@ def compute_deterministic_payload(
     include_config_vector_hash: bool = True,
 ) -> dict[str, Any]:
     """Build deterministic seal payload (no issued_at). Same inputs -> same dict."""
-    values = artifact_to_values(artifact_bytes)
-    h1_subset = extract_h1_subset(values, config_vector)
-    h2 = entropy_h2(values, config_vector)
-    per_modality_h2 = [h2]
-    comb_h2 = combined_h2(per_modality_h2, config_vector)
+    analytics = compute_seal_analytics(artifact_bytes, config_vector)
+    h1_subset = analytics["h1_subset"]
+    per_modality_h2 = analytics["per_modality_h2"]
+    comb_h2 = analytics["combined_h2"]
     if resonance is None:
-        resonance = compute_resonance(values, config_vector)
+        resonance = analytics["resonance"]
     payload = {
         "schema_version": SEAL_SCHEMA_VERSION,
         "h1_subset": h1_subset,

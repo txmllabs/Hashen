@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-from hashen.analytics import combined_h2, compute_resonance, entropy_h2, extract_h1_subset
+from hashen.analytics.tsec import compute_seal_analytics
 from hashen.audit import EventLog
 from hashen.cache import (
     cache_entry,
@@ -88,12 +88,12 @@ def run_pipeline(
             "report_path": None,
             "seal_path": None,
         }
-    values = [b / 255.0 for b in artifact_bytes]
-    h1_subset = extract_h1_subset(values, config_vector)
-    h2 = entropy_h2(values, config_vector)
-    per_modality_h2 = [h2]
-    combined_h2(per_modality_h2, config_vector)  # available for report if needed
-    resonance = compute_resonance(values, config_vector)
+    analytics = compute_seal_analytics(artifact_bytes, config_vector)
+    h1_subset = analytics["h1_subset"]
+    per_modality_h2 = analytics["per_modality_h2"]
+    resonance = analytics["resonance"]
+    routing_path = analytics.get("routing_path", [])
+    uncertainty = analytics.get("uncertainty")
     log.append("FEATURE_EXTRACT", {})
     content_fingerprint = sha256_bytes(artifact_bytes)
     cv_hash = config_vector_hash(config_vector)
@@ -122,7 +122,7 @@ def run_pipeline(
             root=root,
         )
     cache_outcome = dict(cache_report)
-    log.append("ROUTE", {"path": []})
+    log.append("ROUTE", {"path": routing_path, "uncertainty": uncertainty})
     artifact_digest = sha256_bytes(artifact_bytes)
     log.append("SEAL_EMIT", {"digest": artifact_digest})
     log.append("VERIFY", {})
@@ -137,6 +137,7 @@ def run_pipeline(
         artifact_bytes,
         cv,
         audit_head,
+        routing_path=routing_path,
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
     )

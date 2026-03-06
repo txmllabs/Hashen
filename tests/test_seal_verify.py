@@ -231,6 +231,18 @@ def test_tampered_content_epw_mismatch(config_vector):
     assert reason == EPW_MISMATCH
 
 
+def test_seal_with_routing_path_verifies(config_vector):
+    """Seal with populated routing_path still verifies correctly."""
+    artifact = b"routing test artifact"
+    record, epw = create_seal(
+        artifact, config_vector, "a" * 64, routing_path=["edge"]
+    )
+    ok, reason = verify_seal(artifact, record)
+    assert ok is True
+    assert reason is None
+    assert record["routing_path"] == ["edge"]
+
+
 def test_sandbox_metadata_bound_in_seal(config_vector):
     """Seal with sandbox_metadata verifies and contains script_sha256, policy_digest, etc."""
     artifact = b"scripted run"
