@@ -13,6 +13,8 @@ from hashen.cache import (
     cache_set,
 )
 from hashen.cache.models import CACHE_SCHEMA_VERSION
+from hashen.compliance.models import RunContext
+from hashen.compliance.policy import evaluate as policy_evaluate
 from hashen.compliance.reporting import build_report, write_report
 from hashen.provenance.seal import config_vector_hash, create_seal, write_seal
 from hashen.utils.clock import utc_iso_now
@@ -27,11 +29,21 @@ def run_pipeline(
     target_id: str = "default",
     retain_raw: bool = False,
     sandbox_metadata: Optional[dict[str, Any]] = None,
+    run_context: Optional[RunContext] = None,
+    retention_raw_ttl_hours: float = 24,
+    retention_derived_ttl_days: float = 365,
+    legal_hold: bool = False,
+    data_classification: Optional[str] = None,
+    data_source_type: Optional[str] = "user_provided",
+    pii_present: Optional[str] = "unknown",
+    consent_basis: Optional[str] = "legitimate_interest",
+    purpose_of_processing: Optional[str] = None,
+    sharing_restrictions: Optional[str] = None,
+    policy_strictness: str = "standard",
 ) -> dict[str, Any]:
     """
-    Single artifact through: audit events, feature extract (H1/H2), cache lookup,
-    seal, report. Returns summary with audit_head_hash, seal hash, paths.
-    sandbox_metadata: optional runner evidence (script_sha256, policy_digest, etc.).
+    Single artifact through: audit, policy check, feature extract, cache, seal, report.
+    If policy denies, returns with policy_denied=True and no seal/report.
     """
     root = root or Path.cwd()
     audit_dir = root / "audit"
@@ -39,6 +51,43 @@ def run_pipeline(
     log = EventLog(run_id, log_path=audit_dir / f"{run_id}.jsonl")
     log.append("COMMAND_RECEIVED", {"target_id": target_id})
     log.append("FETCH", {})
+    ctx = run_context or RunContext(
+        run_id=run_id,
+        target_id=target_id,
+        data_classification=data_classification,
+        data_source_type=data_source_type or "user_provided",
+        retention_raw_ttl_hours=retention_raw_ttl_hours,
+        retention_derived_ttl_days=retention_derived_ttl_days,
+        legal_hold=legal_hold,
+        pii_present=pii_present or "unknown",
+        consent_basis=consent_basis or "legitimate_interest",
+        purpose_of_processing=purpose_of_processing,
+        sharing_restrictions=sharing_restrictions,
+        action="run",
+        strictness=policy_strictness,
+    )
+    policy_result = policy_evaluate(ctx)
+    log.append(
+        "POLICY_EVALUATED",
+        {
+            "decision": policy_result.decision,
+            "reasons": [r.to_dict() for r in policy_result.reasons],
+            "policy_version": policy_result.policy_version,
+        },
+    )
+    if policy_result.denied:
+        return {
+            "run_id": run_id,
+            "policy_denied": True,
+            "policy_decision": policy_result.decision,
+            "policy_reasons": [r.to_dict() for r in policy_result.reasons],
+            "audit_head_hash": log.head_hash,
+            "audit_path": str(log.path),
+            "seal_hash": None,
+            "artifact_digest": None,
+            "report_path": None,
+            "seal_path": None,
+        }
     values = [b / 255.0 for b in artifact_bytes]
     h1_subset = extract_h1_subset(values, config_vector)
     h2 = entropy_h2(values, config_vector)
@@ -97,16 +146,24 @@ def run_pipeline(
         "h2_max": config_vector.get("h2_max"),
         "h2_bins": config_vector.get("h2_bins"),
     }
+    policy_decision_dict = policy_result.to_dict()
     report = build_report(
         run_id,
         audit_head_hash=audit_head,
         seal_hash=epw_hash,
-        retention_raw_ttl_hours=24,
-        retention_derived_ttl_days=365,
-        legal_hold=False,
+        retention_raw_ttl_hours=retention_raw_ttl_hours,
+        retention_derived_ttl_days=retention_derived_ttl_days,
+        legal_hold=legal_hold,
         config_vector_summary=dict(config_vector),
         fixed_range=fixed_range,
         cache_outcome=cache_outcome,
+        data_source_type=data_source_type or "user_provided",
+        pii_present=pii_present or "unknown",
+        consent_basis=consent_basis or "legitimate_interest",
+        data_classification=data_classification,
+        purpose_of_processing=purpose_of_processing,
+        sharing_restrictions=sharing_restrictions,
+        policy_decision=policy_decision_dict,
     )
     report_path = write_report(run_id, report, root=root)
     return {

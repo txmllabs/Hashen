@@ -217,7 +217,11 @@ def _cmd_bundle_doctor(parser: argparse.ArgumentParser, args: argparse.Namespace
         p = root / fname
         if p.exists():
             try:
-                canonical_loads(p.read_text())
+                data = canonical_loads(p.read_text())
+                if fname == "report.json":
+                    ret = (data.get("retention") or data.get("compliance")) or {}
+                    if ret.get("legal_hold") is True:
+                        warnings.append("legal_hold: bundle not deletable")
             except Exception as e:
                 fatal.append(f"malformed JSON: {fname}: {e}")
 
@@ -247,6 +251,235 @@ def _cmd_schema_list(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         except Exception as e:
             out["schemas"].append({"name": name, "error": str(e)})
     _json_out(out, args.pretty)
+    return 0
+
+
+def _cmd_exec_validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Validate a Python script against restricted execution policy (best-effort)."""
+    from hashen.sandbox.posture import SecurityPosture, default_posture
+    from hashen.sandbox.validation import validate_source
+
+    script_path = args.script_path.resolve()
+    if not script_path.exists():
+        _json_out({"ok": False, "error": "script not found", "path": str(script_path)}, args.pretty)
+        return 1
+    source = script_path.read_text(encoding="utf-8")
+
+    posture = default_posture()
+    overrides: dict[str, object] = {"mode": args.mode}
+    if args.allow_network:
+        overrides["allow_network"] = True
+    if args.allow_filesystem_write:
+        overrides["allow_filesystem_write"] = True
+    if args.allow_subprocess_spawn:
+        overrides["allow_subprocess_spawn"] = True
+    if args.allow_import:
+        overrides["allowed_imports"] = posture.allowed_imports.union(set(args.allow_import))
+    if args.max_runtime_seconds is not None:
+        overrides["max_runtime_seconds"] = float(args.max_runtime_seconds)
+    if args.max_output_bytes is not None:
+        overrides["max_output_bytes"] = int(args.max_output_bytes)
+
+    posture = SecurityPosture(**{**posture.__dict__, **overrides})
+    ok, violations = validate_source(source, posture)
+    out = {
+        "ok": ok,
+        "mode": posture.mode,
+        "violations": [v.to_dict() for v in violations],
+        "limits": {
+            "max_source_bytes": posture.max_source_bytes,
+            "max_ast_nodes": posture.max_ast_nodes,
+        },
+        "posture": {
+            "allow_network": posture.allow_network,
+            "allow_filesystem_write": posture.allow_filesystem_write,
+            "allow_subprocess_spawn": posture.allow_subprocess_spawn,
+            "allowed_imports": sorted(posture.allowed_imports),
+            "max_runtime_seconds": posture.max_runtime_seconds,
+            "max_output_bytes": posture.max_output_bytes,
+            "max_memory_mb": posture.max_memory_mb,
+            "max_cpu_seconds": posture.max_cpu_seconds,
+        },
+        "security_notes": [
+            "Validation is best-effort and not a security boundary.",
+            "Use OS/container isolation for untrusted code.",
+        ],
+    }
+    _json_out(out, args.pretty)
+    return 0 if ok else 1
+
+
+def _cmd_exec_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Run a script in configured restricted-execution mode (best-effort)."""
+    from hashen.sandbox import SubprocessRunner
+    from hashen.sandbox.posture import SecurityPosture, default_posture
+
+    script_path = args.script_path.resolve()
+    if not script_path.exists():
+        _json_out({"ok": False, "error": "script not found", "path": str(script_path)}, args.pretty)
+        return 1
+    source = script_path.read_text(encoding="utf-8")
+
+    posture = default_posture()
+    overrides: dict[str, object] = {"mode": args.mode}
+    if args.allow_network:
+        overrides["allow_network"] = True
+    if args.allow_filesystem_write:
+        overrides["allow_filesystem_write"] = True
+    if args.allow_subprocess_spawn:
+        overrides["allow_subprocess_spawn"] = True
+    if args.allow_import:
+        overrides["allowed_imports"] = posture.allowed_imports.union(set(args.allow_import))
+    if args.max_runtime_seconds is not None:
+        overrides["max_runtime_seconds"] = float(args.max_runtime_seconds)
+    if args.max_output_bytes is not None:
+        overrides["max_output_bytes"] = int(args.max_output_bytes)
+
+    posture = SecurityPosture(**{**posture.__dict__, **overrides})
+
+    runner = SubprocessRunner(
+        max_cpu_seconds=posture.max_cpu_seconds,
+        max_mem_mb=posture.max_memory_mb,
+    )
+    result = runner.run_script(
+        source,
+        timeout_sec=float(args.timeout_sec),
+        strict_mode=args.strict_mode,
+        max_stdout_bytes=posture.max_output_bytes,
+        mode=posture.mode,
+        security_posture=posture.__dict__,
+    )
+    _json_out(result, args.pretty)
+    return 0 if result.get("ok") else 1
+
+
+def _cmd_exec_explain_policy(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Print effective policy posture and blocked features (best-effort summary)."""
+    from hashen.sandbox.posture import default_posture
+
+    posture = default_posture()
+    out = {
+        "mode": posture.mode,
+        "posture": {
+            "allow_network": posture.allow_network,
+            "allow_filesystem_write": posture.allow_filesystem_write,
+            "allow_subprocess_spawn": posture.allow_subprocess_spawn,
+            "allowed_imports": sorted(posture.allowed_imports),
+            "max_runtime_seconds": posture.max_runtime_seconds,
+            "max_output_bytes": posture.max_output_bytes,
+            "max_memory_mb": posture.max_memory_mb,
+            "max_cpu_seconds": posture.max_cpu_seconds,
+        },
+        "blocked": {
+            "builtins": [
+                "eval",
+                "exec",
+                "compile",
+                "open",
+                "input",
+                "__import__",
+                "globals",
+                "locals",
+                "vars",
+                "dir",
+                "getattr",
+                "setattr",
+                "delattr",
+            ],
+            "reflection": ["__class__", "__mro__", "__subclasses__", "dunder attribute access"],
+        },
+        "security_notes": [
+            "This is restricted execution, not a secure sandbox.",
+            "AST checks can be bypassed by a determined attacker; "
+            "use OS/container isolation for untrusted code.",
+        ],
+    }
+    _json_out(out, args.pretty)
+    return 0
+
+
+def _cmd_policy_check(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Evaluate policy for a bundle or input context; return allow/warn/deny."""
+    from hashen.compliance.models import RunContext
+    from hashen.compliance.policy import evaluate as policy_evaluate
+
+    ctx: RunContext
+    bundle_dir = getattr(args, "bundle_dir", None)
+    if bundle_dir is not None and Path(bundle_dir).exists():
+        import json
+
+        root = Path(bundle_dir).resolve()
+        report_path = root / "report.json"
+        if not report_path.exists():
+            _json_out(
+                {"decision": "deny", "error": "report.json not found", "path": str(root)},
+                args.pretty,
+            )
+            return 1
+        try:
+            data = json.loads(report_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            _json_out({"decision": "deny", "error": str(e)}, args.pretty)
+            return 1
+        comp = data.get("compliance") or data.get("retention") or {}
+        ret = data.get("retention") or {}
+        privacy = data.get("privacy") or {}
+        ctx = RunContext(
+            run_id=data.get("run_id", ""),
+            retention_raw_ttl_hours=ret.get("raw_ttl_hours"),
+            retention_derived_ttl_days=ret.get("derived_ttl_days"),
+            legal_hold=ret.get("legal_hold", False),
+            data_classification=comp.get("data_classification"),
+            data_source_type=privacy.get("data_source_type") or comp.get("data_source_type"),
+            pii_present=privacy.get("pii_present") or comp.get("pii_presence"),
+            consent_basis=privacy.get("consent_basis") or comp.get("consent_basis"),
+            purpose_of_processing=comp.get("purpose_of_processing"),
+            sharing_restrictions=comp.get("sharing_restrictions"),
+            action=getattr(args, "action", "run"),
+            strictness=getattr(args, "strictness", "standard"),
+        )
+    else:
+        ctx = RunContext(
+            run_id=getattr(args, "run_id", "") or "cli",
+            retention_raw_ttl_hours=getattr(args, "retention_raw_ttl_hours", None),
+            retention_derived_ttl_days=getattr(args, "retention_derived_ttl_days", None),
+            legal_hold=getattr(args, "legal_hold", False),
+            data_classification=getattr(args, "data_classification", None),
+            data_source_type=getattr(args, "data_source_type", None),
+            pii_present=getattr(args, "pii_present", None),
+            consent_basis=getattr(args, "consent_basis", None),
+            purpose_of_processing=getattr(args, "purpose_of_processing", None),
+            sharing_restrictions=getattr(args, "sharing_restrictions", None),
+            action=getattr(args, "action", "run"),
+            strictness=getattr(args, "strictness", "standard"),
+        )
+    result = policy_evaluate(ctx)
+    out = result.to_dict()
+    _json_out(out, args.pretty)
+    return 0 if result.allowed else 1
+
+
+def _cmd_policy_explain(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Print decision reasoning and triggered rules."""
+    return _cmd_policy_check(parser, args)
+
+
+def _cmd_retention_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Show lifecycle state, legal-hold status, retention window, policy notes."""
+    from hashen.compliance.lifecycle import retention_status
+
+    path = getattr(args, "bundle_dir", None) or getattr(args, "path", None)
+    if path is None:
+        _json_out({"error": "bundle_dir or path required"}, args.pretty)
+        return 1
+    path = Path(path).resolve()
+    status = retention_status(
+        path,
+        raw_ttl_hours=getattr(args, "raw_ttl_hours", 24),
+        derived_ttl_days=getattr(args, "derived_ttl_days", 365),
+        legal_hold=getattr(args, "legal_hold", False),
+    )
+    _json_out(status, args.pretty)
     return 0
 
 
@@ -286,6 +519,91 @@ def main() -> int:
     schema_sub = schema_p.add_subparsers(dest="schema_cmd", required=True)
     sl = schema_sub.add_parser("list", help="List supported schemas and versions")
     sl.set_defaults(_run=_cmd_schema_list)
+
+    # hashen policy check / explain
+    policy_p = sub.add_parser("policy", help="Policy subcommands")
+    policy_sub = policy_p.add_subparsers(dest="policy_cmd", required=True)
+    pcheck = policy_sub.add_parser("check", help="Evaluate policy; return allow/warn/deny")
+    pcheck.add_argument("bundle_dir", type=Path, nargs="?", default=None, help="Bundle directory")
+    pcheck.add_argument(
+        "--strictness",
+        choices=("permissive", "standard", "strict"),
+        default="standard",
+    )
+    pcheck.add_argument("--action", default="run", help="Action: run, export, share, purge, delete")
+    pcheck.add_argument("--legal-hold", action="store_true")
+    pcheck.add_argument("--retention-raw-ttl-hours", type=float, default=None)
+    pcheck.add_argument("--retention-derived-ttl-days", type=float, default=None)
+    pcheck.add_argument("--data-classification", type=str, default=None)
+    pcheck.add_argument("--pii-present", type=str, default=None)
+    pcheck.add_argument("--consent-basis", type=str, default=None)
+    pcheck.add_argument("--purpose-of-processing", type=str, default=None)
+    pcheck.set_defaults(_run=_cmd_policy_check)
+    pexplain = policy_sub.add_parser("explain", help="Print decision reasoning and triggered rules")
+    pexplain.add_argument("bundle_dir", type=Path, nargs="?", default=None)
+    pexplain.add_argument(
+        "--strictness",
+        choices=("permissive", "standard", "strict"),
+        default="standard",
+    )
+    pexplain.add_argument("--action", default="run")
+    pexplain.add_argument("--legal-hold", action="store_true")
+    pexplain.add_argument("--retention-raw-ttl-hours", type=float, default=None)
+    pexplain.add_argument("--retention-derived-ttl-days", type=float, default=None)
+    pexplain.add_argument("--data-classification", type=str, default=None)
+    pexplain.add_argument("--pii-present", type=str, default=None)
+    pexplain.add_argument("--consent-basis", type=str, default=None)
+    pexplain.add_argument("--purpose-of-processing", type=str, default=None)
+    pexplain.set_defaults(_run=_cmd_policy_explain)
+
+    # hashen retention status
+    retention_p = sub.add_parser("retention", help="Retention subcommands")
+    retention_sub = retention_p.add_subparsers(dest="retention_cmd", required=True)
+    rstatus = retention_sub.add_parser("status", help="Show lifecycle state and retention window")
+    rstatus.add_argument("bundle_dir", type=Path, nargs="?", help="Bundle directory")
+    rstatus.add_argument("--path", type=Path, default=None, help="Alias for bundle_dir")
+    rstatus.add_argument("--raw-ttl-hours", type=float, default=24)
+    rstatus.add_argument("--derived-ttl-days", type=float, default=365)
+    rstatus.add_argument("--legal-hold", action="store_true")
+    rstatus.set_defaults(_run=_cmd_retention_status)
+
+    # hashen exec validate/run/explain-policy
+    exec_p = sub.add_parser("exec", help="Restricted execution subcommands (best-effort)")
+    exec_sub = exec_p.add_subparsers(dest="exec_cmd", required=True)
+    ev = exec_sub.add_parser("validate", help="Validate a script against restricted policy")
+    ev.add_argument("script_path", type=Path, help="Path to Python script")
+    ev.add_argument(
+        "--mode",
+        choices=("disabled", "restricted_local", "isolated_subprocess", "container_unsupported"),
+        default="isolated_subprocess",
+    )
+    ev.add_argument("--allow-import", action="append", default=[], help="Additional allowed import")
+    ev.add_argument("--allow-network", action="store_true")
+    ev.add_argument("--allow-filesystem-write", action="store_true")
+    ev.add_argument("--allow-subprocess-spawn", action="store_true")
+    ev.add_argument("--max-runtime-seconds", type=float, default=None)
+    ev.add_argument("--max-output-bytes", type=int, default=None)
+    ev.set_defaults(_run=_cmd_exec_validate)
+
+    er = exec_sub.add_parser("run", help="Run a script in restricted mode")
+    er.add_argument("script_path", type=Path, help="Path to Python script")
+    er.add_argument(
+        "--mode",
+        choices=("disabled", "restricted_local", "isolated_subprocess", "container_unsupported"),
+        default="isolated_subprocess",
+    )
+    er.add_argument("--timeout-sec", type=float, default=5.0)
+    er.add_argument("--strict-mode", action="store_true")
+    er.add_argument("--allow-import", action="append", default=[], help="Additional allowed import")
+    er.add_argument("--allow-network", action="store_true")
+    er.add_argument("--allow-filesystem-write", action="store_true")
+    er.add_argument("--allow-subprocess-spawn", action="store_true")
+    er.add_argument("--max-runtime-seconds", type=float, default=None)
+    er.add_argument("--max-output-bytes", type=int, default=None)
+    er.set_defaults(_run=_cmd_exec_run)
+
+    ep = exec_sub.add_parser("explain-policy", help="Explain default restricted execution policy")
+    ep.set_defaults(_run=_cmd_exec_explain_policy)
 
     args = ap.parse_args()
     return args._run(ap, args)

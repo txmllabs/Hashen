@@ -4,7 +4,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-**Hashen** is a deterministic provenance, audit-chain, and evidence-bundle SDK for AI and digital artifact workflows. It produces tamper-evident seals (EPW), a hash-chained audit log, a content-fingerprint cache with spot-check validation, and optional restricted execution for scripts. Verification is recomputational: given artifact and seal record, a third party can verify without server-side secrets.
+**Hashen** is a provenance and evidence layer that can enforce policy gates and preserve compliance-relevant decision trails for AI and digital artifact workflows. It produces tamper-evident seals (EPW), a hash-chained audit log, a content-fingerprint cache with spot-check validation, and optional restricted execution. Compliance metadata (retention, legal hold, classification, PII/consent) is enforced as policy; policy decisions are recorded in the audit log and report. Hashen does not provide legal advice; implementers map artifacts to their own compliance requirements.
 
 <!-- Repo topics (set in GitHub repo Settings): provenance, verification, audit, trust, evidence-bundle, python -->
 
@@ -17,6 +17,7 @@ Hashen provides deterministic seal generation (EPW), hash-chained audit logs, co
 **Important distinctions:**
 - **Tamper-evident ≠ tamper-proof**: Verification detects modification; it does not prevent it.
 - **Verification SDK ≠ legal certification**: Hashen produces machine-verifiable evidence; it does not certify compliance with any specific regulation.
+- **Policy gates ≠ legal advice**: Compliance metadata and policy decisions are operational controls; they do not constitute legal or regulatory advice.
 
 ---
 
@@ -32,8 +33,8 @@ Hashen provides deterministic seal generation (EPW), hash-chained audit logs, co
 
 ## What Hashen does not guarantee
 
-- **Strong process isolation**: The script runner uses a subprocess with timeout and import denylist (AST-based). It is **not** container or VM isolation. See [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
-- **Complete sandbox**: The denylist is defense-in-depth; it can be bypassed by other means. Do not rely on it as a full sandbox for untrusted code.
+- **Strong process isolation**: The script runner is **restricted execution**: layered AST validation (import allowlist + blocked builtins + reflection heuristics) plus a subprocess with best-effort limits. It is **not** container or VM isolation. See [docs/execution-security.md](docs/execution-security.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+- **Complete sandbox**: Policy checks and subprocess limits are defense-in-depth; a determined attacker can bypass them. Do not rely on this runner as the only barrier for untrusted code.
 - **Cryptographic script signing**: Ed25519 script signature verification is optional and requires the `signing` extra; it is not enabled by default.
 - **C2PA compliance**: The `c2pa_stub` output is a placeholder for future C2PA integration; it is not a full C2PA manifest.
 
@@ -147,6 +148,13 @@ hashen bundle doctor <bundle_dir> [--pretty]
 
 # List supported schema names and versions
 hashen schema list [--pretty]
+
+# Policy: evaluate allow/warn/deny for a bundle or context
+hashen policy check [bundle_dir] [--strictness standard] [--legal-hold] [--action run]
+hashen policy explain [bundle_dir] [--strictness standard] ...
+
+# Retention: lifecycle state, legal hold, retention window
+hashen retention status <bundle_dir> [--raw-ttl-hours 24] [--derived-ttl-days 365] [--legal-hold]
 ```
 
 Legacy entry points (still supported):
@@ -171,6 +179,10 @@ GitHub Actions (`.github/workflows/ci.yml`): pytest, ruff (check + format), pip-
 - [docs/bundle-format.md](docs/bundle-format.md) – Canonical bundle layout, manifest fields, file inventory.
 - [docs/schema-versioning.md](docs/schema-versioning.md) – Schema versions for seal, report, bundle, audit event; compatibility.
 - [docs/verification-model.md](docs/verification-model.md) – Unified verification, reason codes, pass/fail semantics.
+- [docs/compliance-model.md](docs/compliance-model.md) – Compliance metadata as policy gates; legal hold and retention.
+- [docs/policy-engine.md](docs/policy-engine.md) – Policy evaluation, rules, strictness, CLI.
+- [docs/data-lifecycle.md](docs/data-lifecycle.md) – Lifecycle states, retention status, purge eligibility.
+- [docs/execution-security.md](docs/execution-security.md) – Restricted execution model, enforcement, gaps, platform differences.
 - [docs/LIMITATIONS.md](docs/LIMITATIONS.md) – Implementation limits; runner vs container; signature support; platform caveats.
 - [SECURITY.md](SECURITY.md) – Deterministic recomputation; fixed H2 range; seal and audit.
 - [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) – Threats and mitigations.

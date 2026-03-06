@@ -28,8 +28,14 @@ def build_report(
     config_vector_summary: Optional[dict[str, Any]] = None,
     fixed_range: Optional[dict[str, Any]] = None,
     cache_outcome: Optional[dict[str, Any]] = None,
+    # Compliance sections (optional)
+    data_classification: Optional[str] = None,
+    purpose_of_processing: Optional[str] = None,
+    lawful_basis: Optional[str] = None,
+    sharing_restrictions: Optional[str] = None,
+    policy_decision: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Build prosecution-friendly per-run report with config, fixed range, cache evidence."""
+    """Build per-run report with config, fixed range, cache evidence, and optional compliance."""
     report: dict[str, Any] = {
         "schema_version": schema_version,
         "run_id": run_id,
@@ -50,6 +56,25 @@ def build_report(
         report["fixed_range"] = fixed_range
     if cache_outcome:
         report["cache"] = cache_outcome
+    # Compliance block (machine-readable)
+    compliance: dict[str, Any] = {
+        "data_classification": data_classification,
+        "pii_presence": pii_present,
+        "consent_basis": consent_basis,
+        "lawful_or_processing_basis": lawful_basis or consent_basis,
+        "retention_policy": {
+            "raw_ttl_hours": retention_raw_ttl_hours,
+            "derived_ttl_days": retention_derived_ttl_days,
+        },
+        "legal_hold": legal_hold,
+        "purpose_of_processing": purpose_of_processing,
+        "sharing_restrictions": sharing_restrictions,
+    }
+    if policy_decision:
+        compliance["policy_decision"] = policy_decision.get("decision")
+        compliance["policy_reasons"] = policy_decision.get("reasons", [])
+        compliance["policy_version"] = policy_decision.get("policy_version")
+    report["compliance"] = compliance
     return report
 
 

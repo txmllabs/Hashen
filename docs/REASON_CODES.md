@@ -21,6 +21,7 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 | `CACHE_SPOTCHECK_FAILED` | Cache entry existed but spot-check (mean abs diff) exceeded tolerance; entry not reused. |
 | `STRICT_MODE_REQUIRES_SCRIPT_HASH` | Runner in strict mode but `script_sha256` was not provided. |
 | `STDOUT_OVERSIZED` | Script stdout exceeded `max_stdout_bytes` limit. |
+| `EXECUTION_DISABLED` | Execution mode is disabled; script was not run. |
 | `DUAL_CHANNEL_MISMATCH` | Sidecar seal and c2pa stub have different `epw_hash`. |
 | `MANIFEST_FILE_MISSING` | Manifest lists a file that is not present in the bundle. |
 | `MANIFEST_INVALID` | manifest.json is not valid JSON or is malformed. |

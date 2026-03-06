@@ -1,67 +1,37 @@
-"""Import denylist and policy digest for sandbox. policy_version for audit binding."""
+"""Compatibility policy API for restricted execution.
+
+Historically this module implemented a denylist-only AST import gate.
+It now delegates to layered validation (allowlist imports + blocked builtins
++ reflection heuristics) while keeping `check_policy()` for backwards compatibility.
+"""
 
 from __future__ import annotations
 
-import ast
 import hashlib
 
-POLICY_VERSION = "hashen.policy.v1"
+from hashen.sandbox.constants import DENYLIST_IMPORTS
+from hashen.sandbox.posture import SecurityPosture, default_posture
+from hashen.sandbox.validation import POLICY_REJECTED, validate_source
 
-# Denylist: scripts importing these are blocked (SANDBOX_POLICY_VIOLATION)
-# Includes network/data exfil: socket, urllib, http, ftplib, ssl, requests, shutil, etc.
-DENYLIST_IMPORTS: set[str] = {
-    "os",
-    "subprocess",
-    "socket",
-    "urllib",
-    "urllib2",
-    "http",
-    "ftplib",
-    "ssl",
-    "requests",
-    "shutil",
-    "smtplib",
-    "telnetlib",
-    "poplib",
-    "imaplib",
-    "nntplib",
-    "pickle",
-    "shelve",
-    "marshal",
-    "ctypes",
-    "sys",
-    "builtins",
-    "__builtins__",
-}
+# Execution policy version (for audit binding; distinct from compliance policy)
+POLICY_VERSION = "hashen.exec_policy.v1"
 
 
-def get_imports_from_source(source: str) -> list[str]:
-    """Parse Python source with AST and return list of top-level import names."""
-    names: list[str] = []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return names
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                names.append(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                names.append(node.module.split(".")[0])
-    return names
+def check_policy(source: str, posture: SecurityPosture | None = None) -> tuple[bool, str | None]:
+    """Return (allowed, reason) for compatibility.
 
-
-def check_policy(source: str) -> tuple[bool, str | None]:
-    """Return (allowed, reason). Denylisted import -> (False, SANDBOX_POLICY_VIOLATION)."""
-    imports = get_imports_from_source(source)
-    for name in imports:
-        if name in DENYLIST_IMPORTS:
-            return False, "SANDBOX_POLICY_VIOLATION"
+    Any validation violation maps to SANDBOX_POLICY_VIOLATION. Use `validate_source`
+    directly to get structured violations.
+    """
+    posture = posture or default_posture()
+    ok, violations = validate_source(source, posture)
+    if not ok:
+        return False, POLICY_REJECTED
     return True, None
 
 
 def policy_digest() -> str:
-    """Hash of policy (denylist) for audit binding."""
-    blob = ",".join(sorted(DENYLIST_IMPORTS))
+    """Hash of policy for audit binding (denylist + default allowlist)."""
+    p = default_posture()
+    blob = ",".join(sorted(DENYLIST_IMPORTS)) + "|" + ",".join(sorted(p.allowed_imports))
     return hashlib.sha256(blob.encode()).hexdigest()

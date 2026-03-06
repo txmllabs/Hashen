@@ -6,16 +6,16 @@ This document describes current limits of the Hashen implementation. Claims in m
 
 ## Subprocess isolation is not container isolation
 
-- The script **runner** runs code in a **subprocess** with a timeout and an AST-based import denylist. It does **not** use containers, VMs, or kernel namespaces.
-- A determined attacker with the ability to run arbitrary Python could bypass the denylist (e.g. via builtins, C extensions, or other means). The runner is **restricted execution**, not a secure sandbox.
+- The script **runner** runs code in a **subprocess** with a timeout and layered AST validation (import allowlist + blocked builtins + reflection heuristics). It does **not** use containers, VMs, or kernel namespaces.
+- A determined attacker with the ability to run arbitrary Python can bypass AST checks and Python-level restrictions. The runner is **restricted execution**, not a secure sandbox.
 - Use the runner for defense-in-depth and policy enforcement, not as the only barrier against malicious code.
 
 ---
 
 ## AST / policy restrictions are defense-in-depth
 
-- The denylist is enforced by parsing the script’s AST and rejecting certain import names. This blocks many common escape paths but is not a complete sandbox.
-- Dynamic imports, `__import__`, or reflection may circumvent the check if not explicitly blocked. The policy is versioned and digest-bound for auditability, not for cryptographic confinement.
+- Policy is enforced by parsing the script’s AST and rejecting disallowed imports (allowlist), blocked builtin calls (e.g. `eval`/`exec`/`open`), and dunder-heavy reflection patterns. This blocks many common escape paths but is not a complete sandbox.
+- Dynamic behavior and Python runtime escape patterns can circumvent checks. The policy is versioned and digest-bound for auditability, not for cryptographic confinement.
 
 ---
 
