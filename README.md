@@ -57,8 +57,8 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/ARCHITECTURE.md](docs
 ## Verification flow
 
 1. **Produce evidence**: Ingest artifact → run pipeline (analytics, cache lookup, audit events, seal) → write bundle (artifact, audit, seal, verify output, optional manifest).
-2. **Verify**: Load artifact and seal; recompute deterministic payload from artifact + `config_vector`; compare EPW hash to seal; if audit path given, verify chain and `audit_head_hash`.
-3. **Outcome**: `ok` plus optional reason code (e.g. `EPW_MISMATCH`, `AUDIT_CHAIN_BROKEN`, `CONFIG_VECTOR_MISSING`). See [docs/REASON_CODES.md](docs/REASON_CODES.md).
+2. **Verify**: The authoritative implementation is `verify_bundle()` / `verify_bundle_result()` in `hashen.verification`. It recomputes the seal from artifact + `config_vector`, verifies the audit chain and manifest when present, and returns a structured result with `ok`, `reason_codes`, and `checked_files`. `hashen verify` uses this; `hashen-verify` is a thin compatibility wrapper with legacy output shape.
+3. **Outcome**: `ok` plus optional reason code (e.g. `EPW_MISMATCH`, `AUDIT_CHAIN_BROKEN`, `CONFIG_VECTOR_MISSING`). See [docs/REASON_CODES.md](docs/REASON_CODES.md) and [docs/verification-model.md](docs/verification-model.md).
 
 ---
 

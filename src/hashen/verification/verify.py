@@ -27,6 +27,44 @@ REPORT_INCONSISTENT = "REPORT_INCONSISTENT"
 MANIFEST_INCONSISTENT = "MANIFEST_INCONSISTENT"
 UNSUPPORTED_SCHEMA_VERSION = "UNSUPPORTED_SCHEMA_VERSION"
 
+# Known codes for extraction (seal/provenance may return EPW_MISMATCH, etc.)
+_KNOWN_REASON_CODES = frozenset(
+    {
+        MISSING_FILE,
+        MALFORMED_JSON,
+        SCHEMA_INVALID,
+        HASH_MISMATCH,
+        AUDIT_CHAIN_BROKEN,
+        AUDIT_EVENT_TAMPERED,
+        SEAL_REPRODUCE_FAILED,
+        REPORT_INCONSISTENT,
+        MANIFEST_INCONSISTENT,
+        UNSUPPORTED_SCHEMA_VERSION,
+        "EPW_MISMATCH",
+        "CONFIG_VECTOR_MISSING",
+        "REQUIRED_FIELD_MISSING",
+        "SCHEMA_VERSION_UNSUPPORTED",
+        "MANIFEST_HASH_MISMATCH",
+        "MANIFEST_FILE_MISSING",
+        "MANIFEST_INVALID",
+    }
+)
+
+
+def _extract_reason_codes(messages: list[str]) -> list[str]:
+    """Derive stable reason codes from error/warning strings. Preserves order, dedupes."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for msg in messages:
+        part = msg.split(":")[0].strip()
+        if part in _KNOWN_REASON_CODES and part not in seen:
+            seen.add(part)
+            out.append(part)
+        elif part and part not in seen and part.isupper() and "_" in part:
+            seen.add(part)
+            out.append(part)
+    return out
+
 
 @dataclass
 class VerificationResult:
@@ -44,6 +82,8 @@ class VerificationResult:
     reason: Optional[str] = None
     seal_hash: Optional[str] = None
     audit_head_hash: Optional[str] = None
+    reason_codes: list[str] = field(default_factory=list)
+    checked_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Machine-readable dict (e.g. for JSON output)."""
@@ -58,6 +98,8 @@ class VerificationResult:
             "errors": self.errors,
             "warnings": self.warnings,
             "reason": self.reason,
+            "reason_codes": self.reason_codes,
+            "checked_files": self.checked_files,
             "seal_hash": self.seal_hash,
             "audit_head_hash": self.audit_head_hash,
         }
@@ -67,12 +109,19 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     """
     Run full verification on a bundle directory: seal, audit chain, manifest, report.
     Returns structured result; ok=False if any required check fails.
+
+    Fatal vs warning semantics:
+    - Any entry in result.errors is fatal (verification fails).
+    - Missing optional report.json does not fail a valid bundle.
+    - Unsupported schema version (seal/manifest) is fatal unless compatibility mode is added.
+    - result.reason is the first meaningful fatal code or mapped reason; stable codes preferred.
     """
     root = bundle_root.resolve()
     result = VerificationResult(ok=False)
 
     if not root.is_dir():
         result.errors.append(f"{MISSING_FILE}: not a directory: {root}")
+        result.reason_codes = _extract_reason_codes(result.errors)
         return result
 
     # Artifact
@@ -81,7 +130,11 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
         artifact_path = root / "artifact"
     if not artifact_path.exists():
         result.errors.append(f"{MISSING_FILE}: artifact.bin or artifact")
+        result.checked_files = ["artifact.bin", "artifact"]
+        result.reason_codes = _extract_reason_codes(result.errors)
         return result
+
+    result.checked_files.append("artifact.bin" if (root / "artifact.bin").exists() else "artifact")
 
     # Seal
     seal_path = root / "seal.json"
@@ -91,12 +144,17 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
         )
     if not seal_path or not seal_path.exists():
         result.errors.append(f"{MISSING_FILE}: seal.json")
+        result.checked_files.append("seal.json")
+        result.reason_codes = _extract_reason_codes(result.errors)
         return result
+
+    result.checked_files.append("seal.json")
 
     try:
         seal_record = canonical_loads(seal_path.read_text())
     except Exception as e:
         result.errors.append(f"{MALFORMED_JSON}: seal.json: {e}")
+        result.reason_codes = _extract_reason_codes(result.errors)
         return result
 
     valid_seal_schema, schema_errors = validate_seal(seal_record)
@@ -125,6 +183,7 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
             next((root / "audit").glob("*.jsonl"), None) if (root / "audit").exists() else None
         )
     if audit_path and audit_path.exists():
+        result.checked_files.append("audit.jsonl")
         chain_result = verify_audit_chain(audit_path)
         if not chain_result.ok:
             result.errors.append(chain_result.reason or AUDIT_CHAIN_BROKEN)
@@ -154,6 +213,7 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     report_path = root / "report.json"
     result.report_present = report_path.exists()
     if result.report_present:
+        result.checked_files.append("report.json")
         try:
             report_data = canonical_loads(report_path.read_text())
             valid_report, report_schema_errors = validate_report(report_data)
@@ -188,6 +248,7 @@ def verify_bundle(bundle_root: Path) -> VerificationResult:
     )
     if result.errors and not result.reason:
         result.reason = result.errors[0].split(":")[0] if result.errors else None
+    result.reason_codes = _extract_reason_codes(result.errors + result.warnings)
     return result
 
 

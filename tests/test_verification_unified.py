@@ -69,6 +69,40 @@ def test_verify_bundle_result_dict(valid_bundle: Path):
     assert d["seal_valid"] is True
     assert "seal_hash" in d
     assert "errors" in d
+    assert "reason_codes" in d
+    assert "checked_files" in d
+    assert isinstance(d["reason_codes"], list)
+    assert isinstance(d["checked_files"], list)
+    assert "artifact.bin" in d["checked_files"] or "artifact" in d["checked_files"]
+    assert "seal.json" in d["checked_files"]
+
+
+def test_verify_bundle_result_returns_reason_codes_on_failure(valid_bundle: Path):
+    """verify_bundle_result() returns reason_codes on failure (e.g. tampered seal)."""
+    seal_path = valid_bundle / "seal.json"
+    rec = canonical_loads(seal_path.read_text())
+    rec["epw_hash"] = "0" * 64
+    seal_path.write_text(canonical_dumps(rec))
+    write_bundle_manifest(valid_bundle)
+    d = verify_bundle_result(valid_bundle)
+    assert d["ok"] is False
+    assert "reason_codes" in d
+    assert len(d["reason_codes"]) >= 1
+    assert any(
+        c in ("EPW_MISMATCH", "SEAL_REPRODUCE_FAILED") for c in d["reason_codes"]
+    )
+
+
+def test_verify_bundle_result_returns_checked_files_on_failure(tmp_path: Path):
+    """Missing required file: checked_files lists what was examined before failure."""
+    (tmp_path / "artifact.bin").write_bytes(b"x")
+    # no seal
+    d = verify_bundle_result(tmp_path)
+    assert d["ok"] is False
+    assert "checked_files" in d
+    assert "artifact.bin" in d["checked_files"]
+    assert "reason_codes" in d
+    assert "MISSING_FILE" in d["reason_codes"]
 
 
 def test_verification_result_to_dict():
@@ -77,6 +111,8 @@ def test_verification_result_to_dict():
     assert d["ok"] is True
     assert d["seal_valid"] is True
     assert d["errors"] == ["x"]
+    assert "reason_codes" in d
+    assert "checked_files" in d
 
 
 def test_tampered_seal_epw_hash_fails(valid_bundle: Path):
@@ -217,7 +253,7 @@ def test_bundle_inspect_valid_bundle(valid_bundle: Path):
 
 
 def test_bundle_doctor_flags_missing_file(valid_bundle: Path):
-    """Bundle doctor reports missing file when we remove one."""
+    """Bundle doctor reports missing file when we remove one (unified verification)."""
     from types import SimpleNamespace
 
     from hashen.cli.main import _cmd_bundle_doctor
@@ -227,3 +263,78 @@ def test_bundle_doctor_flags_missing_file(valid_bundle: Path):
     args = SimpleNamespace(bundle_dir=valid_bundle, pretty=False)
     code = _cmd_bundle_doctor(parser, args)
     assert code != 0
+
+
+def test_legacy_verify_powered_by_unified(valid_bundle: Path):
+    """Legacy hashen-verify (cli.verify.main) uses unified verification; same failures."""
+    import sys
+    from io import StringIO
+
+    from hashen.cli.verify import main as verify_main
+
+    # Tamper artifact so unified verification fails
+    (valid_bundle / "artifact.bin").write_bytes(b"tampered")
+    write_bundle_manifest(valid_bundle)
+
+    # Simulate: hashen-verify bundle_dir --json
+    sys.argv = ["hashen-verify", str(valid_bundle), "--json"]
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    try:
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+        code = verify_main()
+    finally:
+        out = sys.stdout.getvalue()
+        sys.stdout, sys.stderr = old_stdout, old_stderr
+    assert code == 1
+    data = json.loads(out)
+    assert data["ok"] is False
+    assert data.get("reason") or data.get("seal_hash") is not None
+    # Reason should reflect unified verification (EPW_MISMATCH or seal failure)
+    assert "EPW_MISMATCH" in (data.get("reason") or "") or "Seal" in (data.get("reason") or "")
+
+
+def test_verify_and_doctor_same_tampered_bundle_fail_aligned(valid_bundle: Path):
+    """verify and bundle doctor both fail on same tampered bundle (unified verification)."""
+    from types import SimpleNamespace
+
+    from hashen.cli.main import _cmd_bundle_doctor, _cmd_verify
+    from hashen.verification import verify_bundle
+
+    # Tamper seal
+    seal_path = valid_bundle / "seal.json"
+    rec = canonical_loads(seal_path.read_text())
+    rec["epw_hash"] = "0" * 64
+    seal_path.write_text(canonical_dumps(rec))
+    write_bundle_manifest(valid_bundle)
+
+    result = verify_bundle(valid_bundle)
+    assert result.ok is False
+    assert any(
+        c in result.reason_codes for c in ("EPW_MISMATCH", "SEAL_REPRODUCE_FAILED")
+    )
+
+    parser = __import__("argparse").ArgumentParser()
+    parser.add_argument("--pretty", action="store_true")
+    args = SimpleNamespace(bundle_dir=valid_bundle, pretty=False)
+
+    assert _cmd_verify(parser, args) == 1
+    assert _cmd_bundle_doctor(parser, args) == 1
+
+
+def test_malformed_json_produces_stable_reason_codes(valid_bundle: Path):
+    """Malformed JSON in seal produces MALFORMED_JSON in reason_codes."""
+    (valid_bundle / "seal.json").write_text("not valid json {")
+    write_bundle_manifest(valid_bundle)
+    result = verify_bundle(valid_bundle)
+    assert result.ok is False
+    assert "MALFORMED_JSON" in result.reason_codes
+
+
+def test_missing_required_files_produce_stable_reason_codes(tmp_path: Path):
+    """Missing artifact or seal produces MISSING_FILE in reason_codes."""
+    (tmp_path / "seal.json").write_text("{}")
+    result = verify_bundle(tmp_path)
+    assert result.ok is False
+    assert "MISSING_FILE" in result.reason_codes
+    assert "artifact" in str(result.errors).lower() or "artifact.bin" in str(result.checked_files)

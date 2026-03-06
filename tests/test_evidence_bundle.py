@@ -257,7 +257,9 @@ def test_missing_seal_fails_verify(tmp_path: Path):
         text=True,
     )
     assert proc.returncode != 0
-    assert "seal" in proc.stderr.lower() or "Error" in proc.stderr
+    # Legacy verify (unified) prints failure to stdout; may also use stderr
+    out, err = proc.stdout or "", proc.stderr or ""
+    assert "seal" in (out + err).lower() or "Error" in err or "FAILED" in out
 
 
 def test_altered_manifest_fails_manifest_verify(tmp_path: Path):

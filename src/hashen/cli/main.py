@@ -170,63 +170,26 @@ def _cmd_bundle_inspect(parser: argparse.ArgumentParser, args: argparse.Namespac
 
 
 def _cmd_bundle_doctor(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    """Run consistency checks: missing files, hash mismatches, malformed JSON, schema warnings."""
-    from hashen.provenance.bundle_manifest import (
-        MANIFEST_FILENAME,
-        file_sha256,
-    )
+    """Run consistency checks via unified verification, plus doctor-specific advisories."""
     from hashen.utils.canonical_json import canonical_loads
+    from hashen.verification import verify_bundle
 
     root = args.bundle_dir.resolve()
-    if not root.is_dir():
-        _json_out(
-            {"ok": False, "fatal": ["not a directory"], "warnings": [], "path": str(root)},
-            args.pretty,
-        )
-        return 1
-    fatal: list[str] = []
-    warnings: list[str] = []
-    manifest_path = root / MANIFEST_FILENAME
-    if manifest_path.exists():
+    result = verify_bundle(root)
+
+    fatal: list[str] = list(result.errors)
+    warnings: list[str] = list(result.warnings)
+
+    # Doctor-specific: legal_hold advisory from report (not covered by unified verification)
+    report_path = root / "report.json"
+    if report_path.exists():
         try:
-            manifest = canonical_loads(manifest_path.read_text())
-        except Exception as e:
-            fatal.append(f"malformed JSON: manifest.json: {e}")
-            manifest = None
-    else:
-        manifest = None
-        warnings.append("manifest.json missing")
-
-    if manifest:
-        files = manifest.get("files") or {}
-        for name, stored_hash in files.items():
-            p = root / name
-            if not p.exists():
-                fatal.append(f"missing file: {name}")
-            elif file_sha256(p) != stored_hash:
-                fatal.append(f"hash mismatch: {name}")
-        schema_ver = manifest.get("schema_version")
-        if schema_ver != "hashen.manifest.v1":
-            warnings.append(
-                f"manifest schema_version: {schema_ver!r} (expected hashen.manifest.v1)"
-            )
-    else:
-        if not (root / "artifact.bin").exists() and not (root / "artifact").exists():
-            fatal.append("missing file: artifact.bin or artifact")
-        if not (root / "seal.json").exists():
-            fatal.append("missing file: seal.json")
-
-    for fname in ["seal.json", "verify.json", "report.json"]:
-        p = root / fname
-        if p.exists():
-            try:
-                data = canonical_loads(p.read_text())
-                if fname == "report.json":
-                    ret = (data.get("retention") or data.get("compliance")) or {}
-                    if ret.get("legal_hold") is True:
-                        warnings.append("legal_hold: bundle not deletable")
-            except Exception as e:
-                fatal.append(f"malformed JSON: {fname}: {e}")
+            data = canonical_loads(report_path.read_text())
+            ret = (data.get("retention") or data.get("compliance")) or {}
+            if ret.get("legal_hold") is True:
+                warnings.append("legal_hold: bundle not deletable")
+        except Exception:
+            pass  # already in fatal if malformed from verify_bundle
 
     ok = len(fatal) == 0
     _json_out({"ok": ok, "fatal": fatal, "warnings": warnings, "path": str(root)}, args.pretty)

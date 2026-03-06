@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Verification unification**
+  - Single authoritative verification core: `verify_bundle()` / `verify_bundle_result()` in `hashen.verification`. All public entry points use this core.
+  - `VerificationResult` extended with **reason_codes** (stable machine-readable codes from errors/warnings) and **checked_files** (bundle files examined); both populated on all code paths and included in `to_dict()`.
+  - Legacy `hashen-verify` is a thin wrapper: calls `verify_bundle()`, preserves legacy output shape `{ok, reason, audit_head_hash, seal_hash}` and exit 0/1.
+  - `hashen bundle doctor` now runs unified verification first; `fatal` = `result.errors`, `warnings` = `result.warnings`; only doctor-specific advisories (e.g. legal_hold) added on top.
+  - Docs: `docs/VERIFICATION_RECONCILIATION_NOTES.md`, updates to `docs/verification-model.md`, `docs/REASON_CODES.md`, README verification flow. Fatal vs warning semantics documented in code and docs.
+
 - **Branch reconciliation**
   - Reconciled `upgrade` work onto `main` (unified CLI, schemas, verification, compliance policy, restricted execution hardening).
 - **CLI**

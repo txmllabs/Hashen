@@ -2,6 +2,13 @@
 
 Unified verification checks seal, audit chain, manifest, and optional report and returns a structured result with explicit pass/fail and reason codes.
 
+## Authoritative API
+
+- **`verify_bundle(bundle_root)`** and **`verify_bundle_result(bundle_root)`** in `hashen.verification` are the single authoritative verification implementation. All public verification entry points use this core.
+- **`hashen verify <bundle_dir>`** (main CLI) outputs the full structured result from `verify_bundle_result()`.
+- **`hashen-verify`** (standalone script / `tools/verify_bundle.py`) is a **compatibility wrapper**: it calls `verify_bundle()` and maps the result to the legacy output shape `{ok, reason, audit_head_hash, seal_hash}`; exit 0 on success, 1 on failure; human-readable "Verification OK" / "Verification FAILED: …".
+- **`hashen bundle doctor`** runs **verification first** (same core), then adds doctor-specific advisories (e.g. legal_hold). Its output `{ok, fatal, warnings, path}` uses `fatal = result.errors` and `warnings = result.warnings` from unified verification.
+
 ## Single authoritative path
 
 The verification command (e.g. `hashen verify <bundle_dir>`) runs one coherent flow:
@@ -19,13 +26,12 @@ The verification command (e.g. `hashen verify <bundle_dir>`) runs one coherent f
 Verification result is a JSON object (default output of `hashen verify`):
 
 - **ok**: `true` only if all required checks pass and there are no fatal errors.
-- **seal_valid**: Seal recomputation matched stored epw_hash.
-- **audit_chain_valid**: Audit chain verified and head matched seal (or no audit file).
-- **report_present** / **report_valid**: Report file and schema validity.
-- **manifest_present** / **manifest_valid**: Manifest file and per-file hash checks.
+- **seal_valid**, **audit_chain_valid**, **report_present** / **report_valid**, **manifest_present** / **manifest_valid**: Per-component validity.
 - **errors**: List of fatal error messages (e.g. EPW_MISMATCH, REPORT_INCONSISTENT).
 - **warnings**: Non-fatal findings (e.g. schema validation warnings).
-- **reason**: Short reason code (e.g. first error code).
+- **reason**: First meaningful fatal code or mapped reason (stable codes preferred).
+- **reason_codes**: Ordered list of stable machine-readable codes derived from errors and warnings (e.g. MISSING_FILE, MALFORMED_JSON, EPW_MISMATCH).
+- **checked_files**: List of bundle files actually examined (e.g. artifact.bin, seal.json, audit.jsonl, manifest.json, report.json).
 - **seal_hash**, **audit_head_hash**: When available.
 
 ## Reason codes

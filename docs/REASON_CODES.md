@@ -30,7 +30,7 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 | `MANIFEST_FILE_MISSING` | Manifest lists a file that is not present in the bundle. |
 | `MANIFEST_INVALID` | manifest.json is not valid JSON or is malformed. |
 
-These codes are returned in verification results, runner results, and compliance reports (`reason_codes`). Verifiers and the CLI exit non-zero and emit the code to stderr or in structured output.
+These codes are returned in verification results (in the **reason_codes** list and in **reason**), runner results, and compliance reports. The unified verification result (`VerificationResult.to_dict()`) includes **reason_codes**: an ordered, deduplicated list of stable codes extracted from errors and warnings. Verifiers and the CLI exit non-zero and emit the code to stderr or in structured output.
 
 ## Example failure scenarios
 
