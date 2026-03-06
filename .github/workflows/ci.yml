@@ -53,7 +53,7 @@ jobs:
 
       - name: Evidence-bundle smoke test
         run: |
-          echo -n "hashen-ci" > sample.bin
+          echo "hashen-ci" > sample.bin
           python tools/run_evidence_bundle.py sample.bin ci-run --output-dir bundle_ci
           python tools/verify_bundle.py bundle_ci
 

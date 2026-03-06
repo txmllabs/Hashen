@@ -41,6 +41,7 @@ sample.bin
 *.p12
 
 # Sensitive local content (attorney notes, claim drafts)
+private/
 private/*
 !private/README.txt
 

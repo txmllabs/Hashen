@@ -32,3 +32,19 @@ Hooks include: **ruff** (lint), **ruff-format** (format), **trailing-whitespace*
 2. `pre-commit install`
 3. `pre-commit run -a` (optional; fix any issues)
 4. `pytest -q`
+
+## Windows: equivalent of `make quality`
+
+On Windows (without Make), run the same steps in order:
+
+```powershell
+pytest -q
+ruff check src tests; ruff format --check src tests
+pip-audit --strict --desc
+New-Item -ItemType Directory -Force sbom; cyclonedx-py environment --pyproject pyproject.toml --outfile sbom/bom.json --output-format JSON
+[System.IO.File]::WriteAllBytes("sample.bin", [System.Text.Encoding]::UTF8.GetBytes("hashen-ci"))
+python tools/run_evidence_bundle.py sample.bin ci-run --output-dir bundle_ci
+python tools/verify_bundle.py bundle_ci
+```
+
+Or install Make (e.g. Chocolatey: `choco install make`) and run `make quality`. Note: RLIMIT_CPU/RLIMIT_AS are not enforced on Windows; sandbox memory-limit tests are skipped there.

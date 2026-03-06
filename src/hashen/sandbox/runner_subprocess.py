@@ -19,6 +19,7 @@ from hashen.sandbox.signing import SCRIPT_SIGNATURE_INVALID
 SANDBOX_POLICY_VIOLATION = "SANDBOX_POLICY_VIOLATION"
 TIMEOUT = "TIMEOUT"
 RESOURCE_LIMIT = "RESOURCE_LIMIT"
+RUNTIME_ERROR = "RUNTIME_ERROR"
 
 
 def _set_resource_limits(max_cpu_seconds: Optional[float], max_mem_mb: Optional[float]) -> None:
@@ -35,7 +36,7 @@ def _set_resource_limits(max_cpu_seconds: Optional[float], max_mem_mb: Optional[
             bytes_limit = int(max_mem_mb * 1024 * 1024)
             resource.setrlimit(resource.RLIMIT_AS, (bytes_limit, bytes_limit))
     except (ImportError, OSError, ValueError):
-        pass
+        pass  # Caller may see RESOURCE_LIMIT only when the process actually hits the limit
 
 
 class SubprocessRunner(RunnerInterface):
@@ -92,8 +93,8 @@ class SubprocessRunner(RunnerInterface):
                         ok=(proc.returncode == 0),
                         stdout=stdout or "",
                         stderr=stderr or "",
-                        reason=None if proc.returncode == 0 else "NONZERO_EXIT",
-                        resource_usage={"returncode": proc.returncode},
+                        reason=None if proc.returncode == 0 else RUNTIME_ERROR,
+                        resource_usage={"returncode": int(proc.returncode)},
                     )
                 except subprocess.TimeoutExpired:
                     _kill_process_group(proc.pid)
