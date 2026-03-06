@@ -1,5 +1,62 @@
 # Architecture
 
+## TSEC Cascade Flow
+
+End-to-end flow when TSEC is enabled:
+
+**Command → Parse → Fetch → Modality Pathway → TSEC (H1 windows → H2) → CMER (if multimodal) → Routing → Seal → Verify**
+
+- **Command / Parse**: CLI or API parses request and target.
+- **Fetch**: Orchestrator retrieves artifact bytes.
+- **Modality Pathway**: Dispatch by `modality` (image, audio, timeseries, graph, text, raw) to produce normalized values or precomputed H1.
+- **TSEC**: `compute_h1_windows` → H1 array; `compute_h2_fixed_range` → H2.
+- **CMER**: If config has `modalities` (multimodal), `cross_modal_resonance` computes correlation across H1 arrays; else resonance = 0 for single modality.
+- **Routing**: `route(h2, resonance, config)` → uncertainty → selected path (edge / classical_cloud / federated / human_in_loop).
+- **Seal**: Deterministic payload (H1 subset, H2, resonance, routing_path, config, audit_head) → EPW hash.
+- **Verify**: Recompute payload from artifact + seal’s config; compare EPW.
+
+## Component Mapping
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| 110 Command Parser | cli/main.py | Parse command string |
+| 120 Data Fetcher | orchestrator.py | Retrieve target data |
+| 130 Entropy Engine | analytics/tsec.py + pathways/ | Modality-specific H1 |
+| 140 Meta-Entropy | analytics/tsec.py | Fixed-range H2 |
+| 150 CMER | analytics/resonance.py | Cross-modal correlation |
+| 160 Path Selector | analytics/routing.py | Uncertainty-based routing |
+| 170 Provenance | provenance/seal.py | EPW generation |
+
+## Data Flow Diagram
+
+```
+artifact_bytes
+    │
+    ▼
+[Modality Dispatch] ─── image.py / audio.py / timeseries.py / graph.py
+    │
+    ▼ normalized values (or H1 array for audio)
+[compute_h1_windows] ── Stage 1: windowed H1
+    │
+    ▼ H1 array
+[compute_h2_fixed_range] ── Stage 2: fixed-range H2
+    │
+    ├──▶ [cross_modal_resonance] (if multimodal)
+    │         │
+    │         ▼ resonance score
+    │
+    ▼ H2 + resonance
+[route] ── uncertainty → path selection
+    │
+    ▼ routing_path
+[create_seal] ── EPW hash over {H1, H2, resonance, routing, config, audit_head}
+    │
+    ▼ seal record + EPW hash
+[write_seal] ── dual-channel storage (sidecar + c2pa_stub)
+```
+
+---
+
 ## Ingest → analytics → cache → audit → seal → verify
 
 1. **Ingest**: Artifact bytes (e.g. file content) are read. No assumption about format beyond bytes; normalization to a value vector is deterministic (e.g. byte/255).

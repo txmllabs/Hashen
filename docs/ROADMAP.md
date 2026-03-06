@@ -4,6 +4,17 @@ Prioritized list for maintainers and contributors. For each item: problem, why i
 
 ---
 
+## Implemented (Phases 1–4)
+
+- **TSEC cascade** → DONE (Phase 1): `analytics/tsec.py` — windowed H1, fixed-range H2, classification.
+- **Modality pathways** → DONE (Phase 2): image, audio, timeseries, graph, text; dispatch in `compute_seal_analytics`.
+- **CMER** → DONE (Phase 3): `analytics/resonance.py::cross_modal_resonance()`; single-modality resonance = 0.
+- **Routing** → DONE (Phase 3): `analytics/routing.py::route()`; uncertainty-based path (edge / cloud / federated / human_in_loop).
+- **Benchmarks** → DONE (Phase 4): `hashen benchmark run --domain audio|financial|image|all`; AUC/accuracy/Cohen's d.
+- **API** → DONE (Phase 4): FastAPI `/api/v1/analyze`, `/api/v1/verify`, `/api/v1/health`, `/api/v1/config`; optional `[api]` extra.
+
+---
+
 ## P0 (packaging, schema, verification, cache)
 
 ### Packaging / dev extras correctness
@@ -32,7 +43,25 @@ Prioritized list for maintainers and contributors. For each item: problem, why i
 
 ---
 
-## P1 (runner, releases, benchmarks, reports)
+## P1 (runner, releases, next features)
+
+### Burst detector (NEXT)
+
+- **Problem**: Leaky-integrate-and-fire or similar detector on H1 array to flag burst/compression artifacts.
+- **Why it matters**: Strengthens discrimination for synthetic or heavily compressed content.
+- **Acceptance criteria**: Design and implement; wired into TSEC or seal metadata; tests.
+
+### Real-world validation (NEXT)
+
+- **Problem**: Validate on public datasets (e.g. ASVspoof, FaceForensics++, COCO/StyleGAN3) for prosecution-grade evidence.
+- **Why it matters**: Benchmarks on synthetic data; real-world datasets support patent and commercial claims.
+- **Acceptance criteria**: Documented runs and reported metrics; optional CI or release artifact.
+
+### Full C2PA manifest generation (NEXT)
+
+- **Problem**: Current C2PA output is a stub. Full C2PA manifest generation is not implemented.
+- **Why it matters**: Interoperability with C2PA-based toolchains.
+- **Acceptance criteria**: Document current stub; outline or implement full manifest generation.
 
 ### Stricter runner policy
 
@@ -62,11 +91,29 @@ Prioritized list for maintainers and contributors. For each item: problem, why i
 
 ## P2 (future hardening)
 
-### Optional containerized runner backend
+### Container-based runner (Docker / gVisor)
 
 - **Problem**: Current runner is subprocess + policy; stronger isolation would require a container or VM backend.
 - **Why it matters**: Enables higher-assurance script execution for environments that need it.
 - **Acceptance criteria**: Design doc or spike for runner interface extension; no requirement to implement in core repo; documented as optional/future.
+
+### HSM / signing integration
+
+- **Problem**: Seal or audit signing with HSM or key-based signing not implemented.
+- **Why it matters**: Non-repudiation and key-bound provenance for high-assurance deployments.
+- **Acceptance criteria**: Design or RFC; document as future work.
+
+### Federated entropy consensus
+
+- **Problem**: Multi-party or federated consensus on entropy/routing not implemented.
+- **Why it matters**: Distributed trust and cross-site consistency.
+- **Acceptance criteria**: Design or spike only; documented as future.
+
+### Synthetic training module
+
+- **Problem**: No in-repo module for training or calibrating detectors from synthetic data (Claim 13).
+- **Why it matters**: Supports domain-specific tuning and prosecution evidence.
+- **Acceptance criteria**: Design or placeholder; documented as future.
 
 ### C2PA integration
 

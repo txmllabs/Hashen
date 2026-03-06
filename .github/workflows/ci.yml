@@ -57,6 +57,21 @@ jobs:
           python tools/run_evidence_bundle.py sample.bin ci-run --output-dir bundle_ci
           python tools/verify_bundle.py bundle_ci
 
+      - name: Benchmark smoke test
+        run: |
+          hashen benchmark run --domain audio --samples 5 --seed 42 --output /tmp/bench.json
+          python -c "import json; d=json.load(open('/tmp/bench.json')); assert 'auc' in d"
+
+      - name: API smoke test
+        run: |
+          pip install -e ".[api]"
+          python -c "
+          from fastapi.testclient import TestClient
+          from hashen.api.app import app
+          c = TestClient(app)
+          assert c.get('/api/v1/health').status_code == 200
+          "
+
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:

@@ -112,6 +112,23 @@ hashen-verify bundle_demo
 # hashen-verify bundle_demo
 ```
 
+### Quickstart with TSEC
+
+```bash
+# Run pipeline (artifact → seal, audit, report). For TSEC options see docs/TSEC.md.
+echo -n "test content" > sample.bin
+hashen run sample.bin my-run --output-dir bundle_tsec --pretty
+
+# Run benchmarks (synthetic datasets → AUC / accuracy / Cohen's d)
+hashen benchmark run --domain audio --samples 40 --pretty
+
+# Start API server (requires: pip install -e ".[api]")
+# hashen-api
+# Then: curl -X POST http://localhost:8000/api/v1/analyze -F artifact=@sample.bin
+```
+
+TSEC (Two-Stage Entropy Cascade) is the core analysis engine; see [docs/TSEC.md](docs/TSEC.md) for how it works. For patent claim → code mapping, see [docs/CLAIM_CODE_MAP.md](docs/CLAIM_CODE_MAP.md).
+
 ---
 
 ## Tests
@@ -175,7 +192,9 @@ GitHub Actions (`.github/workflows/ci.yml`): pytest, ruff (check + format), pip-
 
 ## Docs
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Ingest → analytics → cache → audit → seal → verify; trust boundaries; config vector; audit_head_hash; runner policy.
+- [docs/TSEC.md](docs/TSEC.md) – Two-Stage Entropy Cascade: windowed H1, fixed-range H2, modality pathways, configuration, benchmark results.
+- [docs/CLAIM_CODE_MAP.md](docs/CLAIM_CODE_MAP.md) – Patent claim (v5.3) → file/function/test mapping.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Ingest → analytics → cache → audit → seal → verify; TSEC flow; component mapping; trust boundaries; config vector; audit_head_hash; runner policy.
 - [docs/bundle-format.md](docs/bundle-format.md) – Canonical bundle layout, manifest fields, file inventory.
 - [docs/schema-versioning.md](docs/schema-versioning.md) – Schema versions for seal, report, bundle, audit event; compatibility.
 - [docs/verification-model.md](docs/verification-model.md) – Unified verification, reason codes, pass/fail semantics.
