@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hashen.txmllabs.com/schemas/bundle.schema.json",
+  "title": "Hashen Bundle Manifest",
+  "description": "Evidence bundle manifest (file inventory and hashes)",
+  "type": "object",
+  "required": ["schema_version", "files"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "hashen.manifest.v1" },
+    "created_at": { "type": "string" },
+    "bundle_id": { "type": "string" },
+    "target_id": { "type": "string" },
+    "content_fingerprint": { "type": "string" },
+    "seal_hash": { "type": "string" },
+    "audit_head_hash": { "type": "string" },
+    "report_hash": { "type": "string" },
+    "files": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "description": "SHA-256 hex per file" }
+    },
+    "tool_version": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -9,9 +9,12 @@ import shutil
 import sys
 from pathlib import Path
 
+from hashen import __version__
 from hashen.orchestrator import run_pipeline
+from hashen.provenance.bundle_manifest import write_bundle_manifest
 from hashen.provenance.seal import verify_seal
 from hashen.utils.canonical_json import canonical_loads
+from hashen.utils.clock import utc_iso_now
 
 
 def main() -> int:
@@ -32,6 +35,12 @@ def main() -> int:
         action="append",
         default=[],
         help="Config KEY=VAL (e.g. h2_min=0)",
+    )
+    ap.add_argument(
+        "--target-id",
+        type=str,
+        default="default",
+        help="Target identifier to bind into audit/policy/report/manifest (default: default)",
     )
     args = ap.parse_args()
     artifact_path = args.artifact_path
@@ -59,7 +68,13 @@ def main() -> int:
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     root = out_dir
-    result = run_pipeline(artifact_bytes, args.run_id, config_vector, root=root)
+    result = run_pipeline(
+        artifact_bytes,
+        args.run_id,
+        config_vector,
+        root=root,
+        target_id=args.target_id,
+    )
     artifact_copy = root / "artifact.bin"
     shutil.copy2(artifact_path, artifact_copy)
     audit_src = root / "audit" / f"{args.run_id}.jsonl"
@@ -107,9 +122,19 @@ def main() -> int:
     (root / "verify_fail.json").write_text(
         json.dumps(verify_fail_out, sort_keys=True, indent=2),
     )
-    from hashen.provenance.bundle_manifest import write_bundle_manifest
-
-    write_bundle_manifest(root)
+    report_src = root / "reports" / f"{args.run_id}.json"
+    if report_src.exists():
+        shutil.copy2(report_src, root / "report.json")
+    write_bundle_manifest(
+        root,
+        created_at=utc_iso_now(),
+        bundle_id=args.run_id,
+        target_id=args.target_id,
+        content_fingerprint=result["artifact_digest"],
+        seal_hash_value=result["seal_hash"],
+        audit_head_hash_value=result["audit_head_hash"],
+        tool_version=__version__,
+    )
     print(f"Bundle written to {out_dir}")
     print(f"  artifact: {artifact_copy.name}")
     print("  audit: audit.jsonl")

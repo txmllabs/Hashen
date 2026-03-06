@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hashen.txmllabs.com/schemas/report.schema.json",
+  "title": "Hashen Compliance Report",
+  "description": "Per-run compliance report",
+  "type": "object",
+  "required": ["schema_version", "run_id", "audit_head_hash", "seal_hash", "retention"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "hashen.report.v1" },
+    "run_id": { "type": "string" },
+    "audit_head_hash": { "type": "string" },
+    "seal_hash": { "type": "string" },
+    "retention": {
+      "type": "object",
+      "required": ["raw_ttl_hours", "derived_ttl_days", "legal_hold"],
+      "properties": {
+        "raw_ttl_hours": { "type": "number" },
+        "derived_ttl_days": { "type": "number" },
+        "legal_hold": { "type": "boolean" }
+      }
+    },
+    "inputs_summary": { "type": "object" },
+    "reason_codes": { "type": "array", "items": { "type": "string" } },
+    "privacy": { "type": "object" },
+    "config_vector_summary": { "type": "object" },
+    "fixed_range": { "type": "object" },
+    "cache": { "type": "object" }
+  },
+  "additionalProperties": true
+}

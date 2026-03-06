@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Trust and provenance verification layer: seal (EPW), audit chain, cache, restricted execution"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = ["jsonschema>=4.0"]
 license = { text = "Apache-2.0" }
 
 [project.optional-dependencies]
@@ -23,12 +23,16 @@ dev = [
 signing = ["cryptography>=41.0"]
 
 [project.scripts]
+hashen = "hashen.cli.main:main"
 hashen-bundle = "hashen.cli.bundle:main"
 hashen-verify = "hashen.cli.verify:main"
 hashen-retention = "hashen.cli.retention:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+hashen = ["schemas/*.schema.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

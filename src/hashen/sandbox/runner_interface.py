@@ -18,6 +18,8 @@ class RunnerInterface(ABC):
         env: Optional[dict[str, str]] = None,
         strict_mode: bool = False,
         max_stdout_bytes: Optional[int] = None,
+        mode: Optional[str] = None,
+        security_posture: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Execute script under policy; return run_result dict.
         strict_mode: require script_sha256 to be set."""

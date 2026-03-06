@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hashen.txmllabs.com/schemas/seal.schema.json",
+  "title": "Hashen Seal",
+  "description": "Deterministic provenance seal (EPW) record",
+  "type": "object",
+  "required": ["schema_version", "config_vector", "audit_head_hash", "epw_hash"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "hashen.seal.v1" },
+    "h1_subset": { "type": "array", "items": { "type": "number" } },
+    "per_modality_h2": { "type": "array", "items": { "type": "number" } },
+    "combined_h2": { "type": "number" },
+    "resonance": { "type": "number" },
+    "routing_path": { "type": "array", "items": { "type": "string" } },
+    "config_vector": { "type": "object" },
+    "config_vector_hash": { "type": "string" },
+    "audit_head_hash": { "type": "string" },
+    "sandbox_metadata": { "type": ["object", "null"] },
+    "policy_digest": { "type": "string" },
+    "issued_at": { "type": "string" },
+    "epw_hash": { "type": "string" }
+  },
+  "additionalProperties": true
+}
