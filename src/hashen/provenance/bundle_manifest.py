@@ -105,7 +105,7 @@ def write_bundle_manifest(bundle_root: Path, **kwargs: Any) -> Path:
 
 
 def verify_bundle_manifest(bundle_root: Path) -> tuple[bool, Optional[str]]:
-    """Verify manifest: all listed files exist and match hashes. Returns (ok, reason)."""
+    """Verify manifest: inventory hashes and key metadata. Returns (ok, reason)."""
     manifest_path = bundle_root / MANIFEST_FILENAME
     if not manifest_path.exists():
         return False, "MANIFEST_MISSING"
@@ -122,4 +122,40 @@ def verify_bundle_manifest(bundle_root: Path) -> tuple[bool, Optional[str]]:
             return False, f"MANIFEST_FILE_MISSING: {name}"
         if _file_sha256(p) != stored_hash:
             return False, f"MANIFEST_HASH_MISMATCH: {name}"
+
+    # Metadata cross-checks (when fields are present)
+    artifact_path = bundle_root / "artifact.bin"
+    if not artifact_path.exists():
+        artifact_path = bundle_root / "artifact"
+    content_fp = manifest.get("content_fingerprint")
+    if content_fp and artifact_path.exists():
+        if _file_sha256(artifact_path) != content_fp:
+            return False, "MANIFEST_CONTENT_FINGERPRINT_MISMATCH"
+
+    seal_hash = manifest.get("seal_hash")
+    seal_path = bundle_root / "seal.json"
+    if seal_hash and seal_path.exists():
+        try:
+            seal_rec = canonical_loads(seal_path.read_text())
+            if seal_rec.get("epw_hash") and seal_rec.get("epw_hash") != seal_hash:
+                return False, "MANIFEST_SEAL_HASH_MISMATCH"
+        except Exception as e:
+            return False, f"MANIFEST_INVALID: seal.json: {e}"
+
+    report_hash = manifest.get("report_hash")
+    report_path = bundle_root / "report.json"
+    if report_hash and report_path.exists():
+        if _file_sha256(report_path) != report_hash:
+            return False, "MANIFEST_REPORT_HASH_MISMATCH"
+
+    audit_head = manifest.get("audit_head_hash")
+    audit_path = bundle_root / "audit.jsonl"
+    if audit_head and audit_path.exists():
+        from hashen.audit.verify import verify_audit_chain
+
+        chain_result = verify_audit_chain(audit_path)
+        if not chain_result.ok:
+            return False, chain_result.reason or "AUDIT_CHAIN_BROKEN"
+        if chain_result.audit_head_hash != audit_head:
+            return False, "MANIFEST_AUDIT_HEAD_MISMATCH"
     return True, None

@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import shutil
 import sys
 from pathlib import Path
 
 from hashen import __version__
+from hashen.orchestrator import run_pipeline
+from hashen.provenance.bundle_manifest import write_bundle_manifest
+from hashen.provenance.seal import verify_seal
+from hashen.utils.canonical_json import canonical_loads
+from hashen.utils.clock import utc_iso_now
 
 
 def _json_out(data: object, pretty: bool) -> None:
@@ -19,12 +26,6 @@ def _json_out(data: object, pretty: bool) -> None:
 
 def _cmd_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Run pipeline and produce bundle; output bundle path, seal hash, audit head, report path."""
-    import math
-
-    from hashen.orchestrator import run_pipeline
-    from hashen.provenance.seal import verify_seal
-    from hashen.utils.canonical_json import canonical_loads
-
     artifact_path = args.artifact_path.resolve()
     if not artifact_path.exists():
         out = {"ok": False, "error": "artifact not found", "path": str(artifact_path)}
@@ -32,6 +33,8 @@ def _cmd_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         return 1
     artifact_bytes = artifact_path.read_bytes()
     run_id = args.run_id or "run"
+    bundle_id = args.bundle_id or run_id
+    target_id = args.target_id or "default"
     h2_bins = 16
     config_vector = {
         "h2_min": 0.0,
@@ -50,10 +53,14 @@ def _cmd_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
                 config_vector[k] = v
     out_dir = (args.output_dir or Path(f"bundle_{run_id}")).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    result = run_pipeline(artifact_bytes, run_id, config_vector, root=out_dir)
+    result = run_pipeline(
+        artifact_bytes,
+        run_id,
+        config_vector,
+        root=out_dir,
+        target_id=target_id,
+    )
     # Copy artifact, audit, seal into flat bundle layout
-    import shutil
-
     (out_dir / "artifact.bin").write_bytes(artifact_bytes)
     audit_src = out_dir / "audit" / f"{run_id}.jsonl"
     if audit_src.exists():
@@ -76,22 +83,18 @@ def _cmd_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     (out_dir / "verify.json").write_text(
         json.dumps(verify_out, sort_keys=True, indent=2),
     )
-    from hashen import __version__ as v
-    from hashen.provenance.bundle_manifest import write_bundle_manifest
-    from hashen.utils.clock import utc_iso_now
-
     report_src = out_dir / "reports" / f"{run_id}.json"
     if report_src.exists():
         shutil.copy2(report_src, out_dir / "report.json")
     write_bundle_manifest(
         out_dir,
         created_at=utc_iso_now(),
-        bundle_id=run_id,
-        target_id="default",
+        bundle_id=bundle_id,
+        target_id=target_id,
         content_fingerprint=result["artifact_digest"],
         seal_hash_value=result["seal_hash"],
         audit_head_hash_value=result["audit_head_hash"],
-        tool_version=v,
+        tool_version=__version__,
     )
     summary = {
         "ok": True,
@@ -497,6 +500,13 @@ def main() -> int:
     run_p.add_argument("run_id", nargs="?", default="run", help="Run ID")
     run_p.add_argument("--output-dir", type=Path, default=None, help="Bundle output directory")
     run_p.add_argument("--config", action="append", default=[], help="KEY=VAL config")
+    run_p.add_argument("--target-id", type=str, default="default", help="Target identifier")
+    run_p.add_argument(
+        "--bundle-id",
+        type=str,
+        default=None,
+        help="Bundle identifier stored in manifest (default: run_id)",
+    )
     run_p.set_defaults(_run=_cmd_run)
 
     # hashen verify

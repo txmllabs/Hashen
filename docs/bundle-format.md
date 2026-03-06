@@ -35,7 +35,12 @@ The manifest does **not** include itself in the file inventory to avoid circular
 
 - **Seal**: Recompute deterministic payload from artifact + `config_vector` in seal; compare EPW hash.
 - **Audit**: Verify each line’s `prev_hash` / `event_hash` chain; confirm head matches seal’s `audit_head_hash`.
-- **Manifest**: For each entry in `files`, ensure the file exists and its SHA-256 matches.
+- **Manifest**:
+  - For each entry in `files`, ensure the file exists and its SHA-256 matches.
+  - If `content_fingerprint` is present, it must match the artifact digest.
+  - If `seal_hash` is present, it must match `seal.json`’s `epw_hash`.
+  - If `audit_head_hash` is present and `audit.jsonl` is present, it must match the computed audit head.
+  - If `report_hash` is present and `report.json` is present, it must match the report file hash.
 - **Report** (if present): Optionally check schema and consistency of `seal_hash` / `audit_head_hash` with seal and audit.
 
 See [verification-model.md](verification-model.md) for reason codes and pass/fail semantics.
