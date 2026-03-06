@@ -46,3 +46,4 @@ per-file-ignores = { "examples/*.py" = ["E402"] }
 
 [tool.ruff.format]
 quote-style = "double"
+
