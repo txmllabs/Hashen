@@ -1,0 +1,6 @@
+quality:
+	pytest -q
+	ruff check .
+	pip-audit
+	mkdir -p sbom
+	cyclonedx-py -o sbom/bom.json
