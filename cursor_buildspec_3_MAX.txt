@@ -223,3 +223,45 @@ These are the “allowance levers.”
 ──────────────────────────────────────────────────────────────────────────────
 I) CURSOR PROMPT (Use This Exactly)
 “Implement Hashen trust layer per this spec. Create the exact file structure, implement canonical JSON hashing, hash-chained audit log, Seal (EPW) generator/verifier with dual-channel output, content-based cache with spot-check reuse and metrics, compliance retention + privacy tagging + per-run report.json, and secure sandbox runner (subprocess MVP) with import allowlist, no-network default, resource limits, and signature verification hooks. Add reason codes, threat model docs, evidence bundle tool, and pytest coverage for all acceptance tests. Ensure stable deterministic outputs for verification.”
+name: hashen-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-lint-audit-sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+
+      - name: Unit tests
+        run: |
+          pytest -q
+
+      - name: Lint
+        run: |
+          ruff check .
+
+      - name: Dependency vulnerability scan
+        run: |
+          pip-audit
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          cyclonedx-py -o sbom/bom.json
