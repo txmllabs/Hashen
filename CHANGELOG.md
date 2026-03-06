@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Cleanup**: Removed duplicate/stale `README.txt` and `Makefile.txt`; canonical files are `README.md` and `Makefile`.
 - **GitHub normalization**: README, pyproject.toml, and .github/workflows/ci.yml stored with LF line endings so raw GitHub serves multiline; accidental branch removed.
 - **Main branch normalization**: Honest README on default branch; multiline pyproject.toml and ci.yml on raw.
+- **Public main repair**: Explicit LF normalization and multiline config/docs; branch cleanup verified.
 
 ## [0.1.0] - (pre-hardening)
 
