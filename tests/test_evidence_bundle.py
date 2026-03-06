@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,69 @@ def test_pipeline_audit_chain_verifies_in_process(tmp_path: Path):
     seal_record = canonical_loads(seal_path.read_text())
     ok, reason = verify_seal(artifact_bytes, seal_record, audit_log_path=audit_path)
     assert ok, reason
+
+
+def test_verify_cli_exits_nonzero_on_failure(tmp_path: Path):
+    """hashen-verify exits with code 1 when bundle is invalid (e.g. missing seal)."""
+    bundle_dir = tmp_path / "bad_bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "artifact.bin").write_bytes(b"x")
+    (bundle_dir / "audit.jsonl").write_text(
+        '{"event_type":"INGEST","prev_hash":"","event_hash":"y"}\n'
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "verify_bundle.py"),
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+
+
+def test_verify_cli_json_mode(tmp_path: Path):
+    """hashen-verify --json outputs machine-readable result; exit 0 on success, 1 on failure."""
+    artifact_file = tmp_path / "in.bin"
+    artifact_file.write_bytes(b"json demo")
+    bundle_dir = tmp_path / "bundle"
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent.parent / "tools" / "run_evidence_bundle.py"),
+            str(artifact_file),
+            "json-run",
+            "--output-dir",
+            str(bundle_dir),
+        ],
+        capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+    )
+    # Use tools/verify_bundle.py so we can pass --json (same CLI as hashen-verify)
+    verify_script = Path(__file__).parent.parent / "tools" / "verify_bundle.py"
+    proc = subprocess.run(
+        [sys.executable, str(verify_script), str(bundle_dir), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (proc.stdout, proc.stderr)
+    data = json.loads(proc.stdout)
+    assert data.get("ok") is True
+    assert data.get("seal_hash")
+    # Failure case: tamper artifact then verify --json
+    (bundle_dir / "artifact.bin").write_bytes(b"tampered")
+    proc_fail = subprocess.run(
+        [sys.executable, str(verify_script), str(bundle_dir), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc_fail.returncode != 0
+    data_fail = json.loads(proc_fail.stdout)
+    assert data_fail.get("ok") is False
+    reason = data_fail.get("reason") or ""
+    assert "EPW_MISMATCH" in reason or "MANIFEST_HASH_MISMATCH" in reason
 
 
 def test_report_contains_prosecution_friendly_fields(tmp_path: Path):

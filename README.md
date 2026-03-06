@@ -1,6 +1,12 @@
 # Hashen
 
+[![CI](https://github.com/txmllabs/Hashen/actions/workflows/ci.yml/badge.svg)](https://github.com/txmllabs/Hashen/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+
 **Hashen** is a trust and provenance verification layer: it produces tamper-evident seals (EPW), a hash-chained audit log, a content-fingerprint cache with spot-check validation, and optional restricted execution for scripts. It is designed to support deterministic verification and evidence bundles suitable for compliance and prosecution-strength provenance.
+
+<!-- Repo topics (set in GitHub repo Settings): provenance, verification, audit, trust, evidence-bundle, python -->
 
 ---
 
@@ -77,6 +83,15 @@ pre-commit install   # optional
 
 See [docs/DEV_SETUP.md](docs/DEV_SETUP.md) for full developer setup.
 
+### Demo command sequence
+
+```bash
+echo -n "hashen-demo" > sample.bin
+hashen-bundle sample.bin demo-run --output-dir bundle_demo
+hashen-verify bundle_demo
+# Expect: "Verification OK" and exit 0
+```
+
 ---
 
 ## Tests
@@ -100,8 +115,9 @@ pytest -v
 # Evidence bundle (artifact → pipeline → bundle dir)
 hashen-bundle <artifact_path> <run_id> [--output-dir DIR]
 
-# Verify bundle (artifact + seal + audit; optional manifest)
+# Verify bundle (artifact + seal + audit; optional manifest). Exit 0 = OK, 1 = failure.
 hashen-verify <bundle_dir>
+hashen-verify <bundle_dir> --json   # machine-readable output
 
 # Retention cleanup (delete raw artifacts by TTL)
 hashen-retention <dir> [--raw-ttl-hours 24] [--legal-hold]
@@ -127,6 +143,8 @@ GitHub Actions (`.github/workflows/ci.yml`): pytest, ruff (check + format), pip-
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Ingest → analytics → cache → audit → seal → verify; trust boundaries; config vector; audit_head_hash; runner policy.
 - [docs/LIMITATIONS.md](docs/LIMITATIONS.md) – Implementation limits; runner vs container; signature support; platform caveats.
-- [docs/SECURITY.md](docs/SECURITY.md) – Deterministic recomputation; fixed H2 range; seal and audit.
+- [SECURITY.md](SECURITY.md) – Deterministic recomputation; fixed H2 range; seal and audit.
 - [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) – Threats and mitigations.
 - [docs/REASON_CODES.md](docs/REASON_CODES.md) – Verification and runner failure codes.
+- [docs/USE_CASES.md](docs/USE_CASES.md) – Content provenance, audit-ready pipelines, verification artifacts, evidence support.
+- [docs/ROADMAP.md](docs/ROADMAP.md) – Prioritized work items (P0–P2).

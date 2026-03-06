@@ -9,7 +9,7 @@ description = "Trust and provenance verification layer: seal (EPW), audit chain,
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 
 [project.optional-dependencies]
 dev = [

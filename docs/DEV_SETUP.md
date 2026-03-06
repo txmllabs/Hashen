@@ -1,50 +1,67 @@
 # Developer setup
 
-## Install and run tests
+## 1. Environment and install
 
 ```bash
-# Editable install with dev extras (pytest, ruff, pip-audit, cyclonedx-bom, pre-commit)
-pip install -e ".[dev]"
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
 
-# Run tests
-pytest -q
+pip install -e ".[dev]"
 ```
 
-## Pre-commit (format, lint, secret guard)
+Dev extras include: pytest, pytest-cov, ruff, pip-audit, cyclonedx-bom, pre-commit.
+
+## 2. Run tests
+
+```bash
+pytest -q
+# Or: make test
+```
+
+## 3. Linting
+
+```bash
+ruff check src tests
+ruff format --check src tests
+# Or: make lint
+```
+
+To auto-fix and format: `ruff check src tests --fix` and `ruff format src tests`.
+
+## 4. Generate an evidence bundle and verify
+
+```bash
+# Create a small dummy artifact, run pipeline, write bundle, then verify
+echo -n "hashen-ci" > sample.bin
+hashen-bundle sample.bin demo-run --output-dir bundle_demo
+hashen-verify bundle_demo
+# Or (tools): python tools/run_evidence_bundle.py sample.bin demo-run --output-dir bundle_demo
+#             python tools/verify_bundle.py bundle_demo
+# Or: make verify-demo   (Unix; same as make evidence)
+```
+
+Exit code of `hashen-verify` is 0 on success, non-zero on failure.
+
+## 5. SBOM and audit
+
+```bash
+make sbom        # CycloneDX SBOM -> sbom/bom.json
+make audit       # pip-audit (strict)
+# Or: make quality   # test + lint + audit + sbom + verify-demo
+```
+
+## 6. Pre-commit (format, lint, secret guard)
 
 Install hooks so they run automatically before each commit:
 
 ```bash
 pre-commit install
+pre-commit run -a   # run once on whole repo after clone
 ```
 
-Run all hooks on the repo (e.g. after clone):
+Hooks: ruff (lint), ruff-format, trailing-whitespace, end-of-file-fixer, check-yaml, detect-private-key, check-added-large-files (max 2MB).
 
-```bash
-pre-commit run -a
-```
+## Windows
 
-Hooks include: **ruff** (lint), **ruff-format** (format), **trailing-whitespace**, **end-of-file-fixer**, **check-yaml**, **detect-private-key**, **check-added-large-files** (max 2MB).
-
-## One-time setup summary
-
-1. `pip install -e ".[dev]"`
-2. `pre-commit install`
-3. `pre-commit run -a` (optional; fix any issues)
-4. `pytest -q`
-
-## Windows: equivalent of `make quality`
-
-On Windows (without Make), run the same steps in order:
-
-```powershell
-pytest -q
-ruff check src tests; ruff format --check src tests
-pip-audit --strict --desc
-New-Item -ItemType Directory -Force sbom; cyclonedx-py environment --pyproject pyproject.toml --outfile sbom/bom.json --output-format JSON
-[System.IO.File]::WriteAllBytes("sample.bin", [System.Text.Encoding]::UTF8.GetBytes("hashen-ci"))
-python tools/run_evidence_bundle.py sample.bin ci-run --output-dir bundle_ci
-python tools/verify_bundle.py bundle_ci
-```
-
-Or install Make (e.g. Chocolatey: `choco install make`) and run `make quality`. Note: RLIMIT_CPU/RLIMIT_AS are not enforced on Windows; sandbox memory-limit tests are skipped there.
+Without Make, run the same steps manually. See [MAKEFILE_WINDOWS.md](MAKEFILE_WINDOWS.md) for PowerShell equivalents of `make test`, `make lint`, `make sbom`, `make verify-demo`, `make quality`. RLIMIT_CPU/RLIMIT_AS are not enforced on Windows; sandbox memory-limit tests are skipped there.
