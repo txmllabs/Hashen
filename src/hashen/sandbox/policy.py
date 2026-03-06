@@ -1,12 +1,14 @@
-"""Import denylist and policy digest for sandbox."""
+"""Import denylist and policy digest for sandbox. policy_version for audit binding."""
 
 from __future__ import annotations
 
 import ast
 import hashlib
 
+POLICY_VERSION = "hashen.policy.v1"
+
 # Denylist: scripts importing these are blocked (SANDBOX_POLICY_VIOLATION)
-# Includes network/data exfil: socket, urllib, http, ftplib, ssl, requests, etc.
+# Includes network/data exfil: socket, urllib, http, ftplib, ssl, requests, shutil, etc.
 DENYLIST_IMPORTS: set[str] = {
     "os",
     "subprocess",
@@ -17,6 +19,7 @@ DENYLIST_IMPORTS: set[str] = {
     "ftplib",
     "ssl",
     "requests",
+    "shutil",
     "smtplib",
     "telnetlib",
     "poplib",

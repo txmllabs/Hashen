@@ -56,15 +56,20 @@ def test_evidence_bundle_produces_artifact_audit_seal_verify(tmp_path: Path):
     assert (out_dir / "audit.jsonl").exists()
     assert (out_dir / "seal.json").exists()
     assert (out_dir / "verify.json").exists()
-    # Verify output says ok
+    assert (out_dir / "verify_ok.json").exists()
+    assert (out_dir / "artifact_tampered.bin").exists()
+    assert (out_dir / "verify_fail.json").exists()
     import json
 
     verify = json.loads((out_dir / "verify.json").read_text())
     assert verify.get("ok") is True
+    verify_fail = json.loads((out_dir / "verify_fail.json").read_text())
+    assert verify_fail.get("ok") is False
+    assert verify_fail.get("reason") == "EPW_MISMATCH"
 
 
 def test_verify_bundle_ok(tmp_path: Path):
-    """Run bundle then verify -> OK."""
+    """Run bundle then verify_bundle -> exit 0 and required files exist."""
     artifact_file = tmp_path / "in.bin"
     artifact_file.write_bytes(b"verify me")
     run_id = "verify-run"
@@ -93,6 +98,9 @@ def test_verify_bundle_ok(tmp_path: Path):
     )
     assert proc.returncode == 0, proc.stderr
     assert "OK" in proc.stdout
+    assert (bundle_dir / "verify_ok.json").exists()
+    assert (bundle_dir / "verify_fail.json").exists()
+    assert (bundle_dir / "artifact_tampered.bin").exists()
 
 
 def test_tamper_then_verify_fails(tmp_path: Path):

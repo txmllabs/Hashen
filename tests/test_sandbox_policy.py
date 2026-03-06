@@ -23,6 +23,20 @@ def test_script_importing_socket_blocked():
     assert reason == "SANDBOX_POLICY_VIOLATION"
 
 
+def test_script_import_socket_alias_blocked():
+    """Block 'import socket as s' (denylist covers aliases)."""
+    allowed, reason = check_policy("import socket as s\ns.create_connection(('x', 80))")
+    assert allowed is False
+    assert reason == "SANDBOX_POLICY_VIOLATION"
+
+
+def test_script_importing_shutil_blocked():
+    """Script importing shutil -> blocked (denylist)."""
+    allowed, reason = check_policy("import shutil\nshutil.copy('a', 'b')")
+    assert allowed is False
+    assert reason == "SANDBOX_POLICY_VIOLATION"
+
+
 def test_runner_socket_import_returns_violation():
     """Runner returns SANDBOX_POLICY_VIOLATION for socket import."""
     runner = SubprocessRunner()
@@ -65,6 +79,14 @@ def test_runner_os_import_returns_violation():
     assert result.get("reason") == "SANDBOX_POLICY_VIOLATION"
 
 
+def test_runner_script_signature_invalid_on_sha256_mismatch():
+    """Runner returns SCRIPT_SIGNATURE_INVALID when script_sha256 does not match."""
+    runner = SubprocessRunner()
+    result = runner.run_script("print(1)", timeout_sec=5.0, script_sha256="wrong")
+    assert result["ok"] is False
+    assert result.get("reason") == "SCRIPT_SIGNATURE_INVALID"
+
+
 def test_runner_ok_json_stdout():
     """Runner allows script that prints JSON."""
     runner = SubprocessRunner()
@@ -84,4 +106,4 @@ def test_runner_excessive_allocation_triggers_resource_limit():
     )
     # May get RESOURCE_LIMIT or (on some systems) still succeed if limit not enforced
     if not result["ok"]:
-        assert result.get("reason") in ("RESOURCE_LIMIT", "NONZERO_EXIT", "TIMEOUT")
+        assert result.get("reason") in ("RESOURCE_LIMIT", "RUNTIME_ERROR", "TIMEOUT")

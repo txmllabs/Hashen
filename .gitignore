@@ -31,7 +31,19 @@ htmlcov/
 /cache/
 /sbom/
 /bundle_*/
+evidence/
 sample.bin
+
+# Secrets and keys
+.env
+*.pem
+*.key
+*.p12
+
+# Sensitive local content (attorney notes, claim drafts)
+private/
+private/*
+!private/README.txt
 
 # OS
 .DS_Store

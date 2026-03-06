@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import sys
 from pathlib import Path
@@ -37,7 +38,16 @@ def main() -> int:
         print(f"Error: artifact not found: {artifact_path}", file=sys.stderr)
         return 1
     artifact_bytes = artifact_path.read_bytes()
-    config_vector = {"h2_min": 0.0, "h2_max": 1.0, "h2_bins": 16, "h1_subset_size": 32}
+    h2_bins = 16
+    # Fixed preconfigured range: h2_max = log2(h2_bins) (no autorange)
+    config_vector = {
+        "h2_min": 0.0,
+        "h2_max": math.log2(h2_bins),
+        "h2_bins": h2_bins,
+        "h1_subset_size": 32,
+        "fixed_range_policy": "preconfigured_no_autorange",
+        "policy_version": "hashen.policy.v1",
+    }
     for s in args.config:
         if "=" in s:
             k, v = s.split("=", 1)
@@ -78,6 +88,32 @@ def main() -> int:
         "seal_hash": result["seal_hash"],
     }
     (root / "verify.json").write_text(json.dumps(verify_out, sort_keys=True, indent=2))
+    if ok:
+        (root / "verify_ok.json").write_text(
+            json.dumps(verify_out, sort_keys=True, indent=2)
+        )
+    # Tampered artifact and verify_fail: prove verifier rejects tampering
+    artifact_tampered = root / "artifact_tampered.bin"
+    tampered_bytes = (
+        artifact_bytes[:1] + b"X" + artifact_bytes[2:]
+        if len(artifact_bytes) >= 2
+        else b"tampered"
+    )
+    artifact_tampered.write_bytes(tampered_bytes)
+    ok_fail, reason_fail = verify_seal(
+        tampered_bytes,
+        seal_record,
+        audit_log_path=audit_for_verify if audit_for_verify.exists() else None,
+    )
+    verify_fail_out = {
+        "ok": ok_fail,
+        "reason": reason_fail,
+        "audit_head_hash": result["audit_head_hash"],
+        "seal_hash": result["seal_hash"],
+    }
+    (root / "verify_fail.json").write_text(
+        json.dumps(verify_fail_out, sort_keys=True, indent=2)
+    )
     print(f"Bundle written to {out_dir}")
     print(f"  artifact: {artifact_copy.name}")
     print("  audit: audit.jsonl")

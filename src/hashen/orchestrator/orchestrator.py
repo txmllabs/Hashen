@@ -55,9 +55,15 @@ def run_pipeline(
     log.append("SEAL_EMIT", {"digest": artifact_digest})
     log.append("VERIFY", {})
     audit_head = log.head_hash
+    # Ensure policy_version in seal for audit binding (if not already in config_vector)
+    cv = dict(config_vector)
+    if "policy_version" not in cv:
+        from hashen.sandbox.policy import POLICY_VERSION
+
+        cv["policy_version"] = POLICY_VERSION
     full_record, epw_hash = create_seal(
         artifact_bytes,
-        config_vector,
+        cv,
         audit_head,
         resonance=resonance,
     )

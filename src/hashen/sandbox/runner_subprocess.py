@@ -14,10 +14,12 @@ from typing import Any, Optional
 from hashen.sandbox.models import run_result
 from hashen.sandbox.policy import check_policy
 from hashen.sandbox.runner_interface import RunnerInterface
+from hashen.sandbox.signing import SCRIPT_SIGNATURE_INVALID
 
 SANDBOX_POLICY_VIOLATION = "SANDBOX_POLICY_VIOLATION"
 TIMEOUT = "TIMEOUT"
 RESOURCE_LIMIT = "RESOURCE_LIMIT"
+RUNTIME_ERROR = "RUNTIME_ERROR"
 
 
 def _set_resource_limits(max_cpu_seconds: Optional[float], max_mem_mb: Optional[float]) -> None:
@@ -34,7 +36,7 @@ def _set_resource_limits(max_cpu_seconds: Optional[float], max_mem_mb: Optional[
             bytes_limit = int(max_mem_mb * 1024 * 1024)
             resource.setrlimit(resource.RLIMIT_AS, (bytes_limit, bytes_limit))
     except (ImportError, OSError, ValueError):
-        pass
+        pass  # Caller may see RESOURCE_LIMIT only when the process actually hits the limit
 
 
 class SubprocessRunner(RunnerInterface):
@@ -63,7 +65,7 @@ class SubprocessRunner(RunnerInterface):
             return run_result(ok=False, reason=reason or SANDBOX_POLICY_VIOLATION)
         computed_sha = hashlib.sha256(script_source.encode()).hexdigest()
         if script_sha256 and computed_sha != script_sha256:
-            return run_result(ok=False, reason="SCRIPT_SHA256_MISMATCH")
+            return run_result(ok=False, reason=SCRIPT_SIGNATURE_INVALID)
         env_clean = env or {}
 
         def _preexec() -> None:
@@ -91,8 +93,8 @@ class SubprocessRunner(RunnerInterface):
                         ok=(proc.returncode == 0),
                         stdout=stdout or "",
                         stderr=stderr or "",
-                        reason=None if proc.returncode == 0 else "NONZERO_EXIT",
-                        resource_usage={"returncode": proc.returncode},
+                        reason=None if proc.returncode == 0 else RUNTIME_ERROR,
+                        resource_usage={"returncode": int(proc.returncode)},
                     )
                 except subprocess.TimeoutExpired:
                     _kill_process_group(proc.pid)
@@ -115,12 +117,13 @@ class SubprocessRunner(RunnerInterface):
 
 
 def _kill_process_group(pid: int) -> None:
-    """Kill process group (Unix). On Windows, terminate the process only."""
+    """Unix: kill entire process group (SIGKILL). Windows: terminate then kill."""
     if sys.platform == "win32":
         try:
             os.kill(pid, signal.SIGTERM)
         except (OSError, AttributeError):
             pass
+        # Fallback: proc.kill() is used by caller after wait timeout
     else:
         try:
             os.killpg(os.getpgid(pid), signal.SIGKILL)
