@@ -35,6 +35,7 @@ evidence/
 sample.bin
 sample_tiny.bin
 _final_demo/
+demo_out/
 
 # Secrets and keys
 .env

@@ -51,6 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **CI workflow**: `.github/workflows/ci.yml` is valid multiline YAML with checkout, Python setup, editable install, compile, pytest, ruff check/format, pip-audit, SBOM, evidence-bundle smoke test.
 - **Cleanup**: Removed duplicate/stale `README.txt` and `Makefile.txt`; canonical files are `README.md` and `Makefile`.
 - **GitHub normalization**: README, pyproject.toml, and .github/workflows/ci.yml stored with LF line endings so raw GitHub serves multiline; accidental branch removed.
+- **Main branch normalization**: Honest README on default branch; multiline pyproject.toml and ci.yml on raw.
 
 ## [0.1.0] - (pre-hardening)
 
