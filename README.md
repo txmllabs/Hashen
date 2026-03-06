@@ -10,9 +10,15 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 # source .venv/bin/activate  # Linux/macOS
 
-# Install in editable mode
-pip install -e .
+# Install in editable mode (add [dev] for tests, lint, pre-commit)
+pip install -e ".[dev]"
+
+# Optional: install pre-commit hooks (format/lint/secret guard before commit)
+pre-commit install
+pre-commit run -a
 ```
+
+See [docs/DEV_SETUP.md](docs/DEV_SETUP.md) for full developer setup.
 
 ## Tests
 

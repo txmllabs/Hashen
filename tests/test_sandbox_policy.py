@@ -23,6 +23,13 @@ def test_script_importing_socket_blocked():
     assert reason == "SANDBOX_POLICY_VIOLATION"
 
 
+def test_script_importing_shutil_blocked():
+    """Script importing shutil -> blocked (denylist)."""
+    allowed, reason = check_policy("import shutil\nshutil.copy('a', 'b')")
+    assert allowed is False
+    assert reason == "SANDBOX_POLICY_VIOLATION"
+
+
 def test_runner_socket_import_returns_violation():
     """Runner returns SANDBOX_POLICY_VIOLATION for socket import."""
     runner = SubprocessRunner()
@@ -63,6 +70,14 @@ def test_runner_os_import_returns_violation():
     result = runner.run_script("import os\nprint(os.getcwd())", timeout_sec=5.0)
     assert result["ok"] is False
     assert result.get("reason") == "SANDBOX_POLICY_VIOLATION"
+
+
+def test_runner_script_signature_invalid_on_sha256_mismatch():
+    """Runner returns SCRIPT_SIGNATURE_INVALID when script_sha256 does not match."""
+    runner = SubprocessRunner()
+    result = runner.run_script("print(1)", timeout_sec=5.0, script_sha256="wrong")
+    assert result["ok"] is False
+    assert result.get("reason") == "SCRIPT_SIGNATURE_INVALID"
 
 
 def test_runner_ok_json_stdout():

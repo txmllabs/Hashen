@@ -1,5 +1,9 @@
 # Hashen Threat Model
 
+## Summary
+
+The following threats are in scope: **cache poisoning**, **metadata stripping**, **audit tamper**, **script RCE**, and **supply chain** compromise. Mitigations are listed in the table below.
+
 ## Threats and Mitigations
 
 | Threat | Mitigation |

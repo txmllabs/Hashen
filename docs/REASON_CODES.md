@@ -12,7 +12,7 @@ Standard failure reasons used by the seal verifier, audit verifier, sandbox, and
 | `SANDBOX_POLICY_VIOLATION` | Script uses denylisted import (e.g. `os`, `socket`, `subprocess`). |
 | `TIMEOUT` | Script exceeded wall-clock time limit; process group killed. |
 | `RESOURCE_LIMIT` | Script exceeded CPU or memory limit (Unix RLIMIT_CPU/RLIMIT_AS). |
-| `SCRIPT_SIGNATURE_INVALID` | Optional ed25519 script signature verification failed. |
+| `SCRIPT_SIGNATURE_INVALID` | Script signature or script_sha256 mismatch; ed25519 verification failed if used. |
 | `CACHE_SPOTCHECK_FAILED` | Cache entry existed but spot-check (mean abs diff) exceeded tolerance; entry not reused. |
 
 These codes are returned in verification results and in compliance reports (`reason_codes`).

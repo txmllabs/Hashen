@@ -17,12 +17,38 @@ from hashen.utils.clock import utc_iso_now
 from hashen.utils.hashing import sha256_canonical
 from hashen.utils.paths import c2pa_stub_dir, seals_dir
 
+# Schema version for seal payload (forward-compatible; verifier ignores unknown fields)
+SEAL_SCHEMA_VERSION = "hashen.seal.v1"
+
 # Reason codes (align with docs/REASON_CODES.md)
 EPW_MISMATCH = "EPW_MISMATCH"
 CONFIG_VECTOR_MISSING = "CONFIG_VECTOR_MISSING"
 AUDIT_CHAIN_BROKEN = "AUDIT_CHAIN_BROKEN"
 ARTIFACT_DECODE_FAILED = "ARTIFACT_DECODE_FAILED"
 INSUFFICIENT_MODALITIES = "INSUFFICIENT_MODALITIES"
+
+# Keys excluded from hashed payload (non-deterministic or envelope-only)
+_NON_DETERMINISTIC_KEYS = frozenset(
+    {
+        "issued_at",
+        "timestamp",
+        "epw_hash",
+        "evidence_urls",
+        "local_path",
+        "path",
+        "file_path",
+    }
+)
+
+
+def build_hashed_payload(record: dict) -> dict[str, Any]:
+    """Extract deterministic payload from a seal record; drops non-deterministic keys."""
+    return {k: v for k, v in record.items() if k not in _NON_DETERMINISTIC_KEYS}
+
+
+def compute_epw_hash(payload: dict[str, Any]) -> str:
+    """Compute EPW hash from a deterministic payload dict (canonical JSON SHA-256)."""
+    return sha256_canonical(payload)
 
 
 def artifact_to_values(artifact_bytes: bytes) -> list[float]:
@@ -47,6 +73,7 @@ def compute_deterministic_payload(
     if resonance is None:
         resonance = compute_resonance(values, config_vector)
     return {
+        "schema_version": SEAL_SCHEMA_VERSION,
         "h1_subset": h1_subset,
         "per_modality_h2": per_modality_h2,
         "combined_h2": comb_h2,
@@ -101,7 +128,7 @@ def create_seal(
         resonance=resonance,
         sandbox_metadata=sandbox_metadata,
     )
-    epw_hash = sha256_canonical(payload)
+    epw_hash = compute_epw_hash(payload)
     issued_at = utc_iso_now(clock=clock)
     full_record = {**payload, "issued_at": issued_at, "epw_hash": epw_hash}
     return full_record, epw_hash
@@ -149,7 +176,7 @@ def verify_seal(
         resonance=seal_record.get("resonance"),
         sandbox_metadata=seal_record.get("sandbox_metadata"),
     )
-    computed_epw = sha256_canonical(payload)
+    computed_epw = compute_epw_hash(payload)
     stored_epw = seal_record.get("epw_hash")
     if not stored_epw:
         return False, EPW_MISMATCH

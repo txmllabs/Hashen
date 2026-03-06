@@ -26,3 +26,10 @@ If you believe you have found a security vulnerability in Hashen, please report 
 - **Personal data** or confidential information.
 
 See also [docs/DISCLOSURE_POLICY.md](docs/DISCLOSURE_POLICY.md) for prohibited uploads and evidence handling.
+
+## Secrets & public repo rules
+
+- **Never commit**: `.env` files, API keys, passwords, tokens, signing keys, or any secret material.
+- **Never commit** evidence bundles that contain real customer or production data; use dummy/synthetic input only (e.g. `echo "hashen-ci" > sample.bin`).
+- **Sensitive docs**: Use the `private/` folder for attorney notes, claim drafts, or confidential docs. This folder is gitignored; put a copy of `private/README.txt` there and keep it out of version control.
+- CI runs secret scanning (gitleaks); fix or allow-list any findings before merging.

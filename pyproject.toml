@@ -16,6 +16,7 @@ dev = [
   "ruff>=0.4",
   "pip-audit>=2.7",
   "cyclonedx-bom>=4.5",
+  "pre-commit>=3.7",
 ]
 signing = ["cryptography>=41.0"]
 

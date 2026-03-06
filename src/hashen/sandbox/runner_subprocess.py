@@ -14,6 +14,7 @@ from typing import Any, Optional
 from hashen.sandbox.models import run_result
 from hashen.sandbox.policy import check_policy
 from hashen.sandbox.runner_interface import RunnerInterface
+from hashen.sandbox.signing import SCRIPT_SIGNATURE_INVALID
 
 SANDBOX_POLICY_VIOLATION = "SANDBOX_POLICY_VIOLATION"
 TIMEOUT = "TIMEOUT"
@@ -63,7 +64,7 @@ class SubprocessRunner(RunnerInterface):
             return run_result(ok=False, reason=reason or SANDBOX_POLICY_VIOLATION)
         computed_sha = hashlib.sha256(script_source.encode()).hexdigest()
         if script_sha256 and computed_sha != script_sha256:
-            return run_result(ok=False, reason="SCRIPT_SHA256_MISMATCH")
+            return run_result(ok=False, reason=SCRIPT_SIGNATURE_INVALID)
         env_clean = env or {}
 
         def _preexec() -> None:
@@ -115,12 +116,13 @@ class SubprocessRunner(RunnerInterface):
 
 
 def _kill_process_group(pid: int) -> None:
-    """Kill process group (Unix). On Windows, terminate the process only."""
+    """Unix: kill entire process group (SIGKILL). Windows: terminate then kill."""
     if sys.platform == "win32":
         try:
             os.kill(pid, signal.SIGTERM)
         except (OSError, AttributeError):
             pass
+        # Fallback: proc.kill() is used by caller after wait timeout
     else:
         try:
             os.killpg(os.getpgid(pid), signal.SIGKILL)
