@@ -1,0 +1,225 @@
+Hashen Build Spec 3 (MAX): Security, Sandboxing, Audit-EPW Binding, Compliance + CI
+Version: 3.0 (Maximal)
+Date: Mar 2026
+Owner: Jared Zelmer
+Goal: Build the “trust layer” that makes Hashen enterprise-grade and prosecution-strong:
+- tamper-evident cryptographic provenance certificate (Seal / EPW)
+- hash-chained audit trail (Chain)
+- secure sandbox runner + policy gate for script execution (Runner)
+- compliance-by-design (minimization, retention, privacy tags)
+- measurable efficiency + cache evidence (Cache)
+- CI + supply-chain hardening (SBOM, vuln scan, signed artifacts)
+This spec is optimized for build success and patent defensibility.
+
+──────────────────────────────────────────────────────────────────────────────
+A) PRINCIPLES (Non-Negotiables)
+1) Zero-trust: Treat commands, scripts, fetched data, and cache entries as untrusted.
+2) Deterministic verification: A third party can reproduce EPW hash using stored config vector.
+3) “Fixed range” meaning: fixed entropy range is preconfigured and NOT derived from the input sample distribution (no per-sample auto-ranging for H2).
+4) Tamper evidence: If artifact content changes, verification must fail.
+5) Secure by default: no network in sandbox; minimal storage; short TTL for raw artifacts.
+6) Evidence packs: Every run can emit a reproducible bundle proving outputs and integrity.
+
+──────────────────────────────────────────────────────────────────────────────
+B) TARGET FEATURE SET (What “Done” Means)
+
+DONE = all of the following are implemented and tested:
+
+B1) Hashen Seal (EPW)
+- Canonical provenance record:
+  { per-modality H1 subset (or full vector configurable),
+    per-modality H2,
+    combined_H2,
+    optional resonance,
+    routing path,
+    timestamp,
+    config_vector,
+    audit_head_hash,
+    optional sandbox metadata }
+- SHA-256 over canonical JSON serialization (sorted keys, stable separators).
+- Dual-channel storage:
+  - Sidecar seal file: seals/<artifact_digest>.seal.json
+  - C2PA-stub manifest: c2pa_stub/<artifact_digest>.json (future integration point)
+- Offline verifier:
+  - recomputes H1/H2 from artifact using config_vector
+  - verifies audit chain integrity (if present)
+  - recomputes EPW hash and compares
+  - returns OK + reason codes on failure
+
+B2) Hashen Chain (Audit Log)
+- Append-only JSONL event log per run:
+  audit/<run_id>.jsonl
+- Hash-chained:
+  each event has prev_hash and event_hash
+- Events recorded at each stage:
+  COMMAND_RECEIVED, FETCH, FEATURE_EXTRACT, TSEC, CMER, ROUTE, CACHE_HIT/MISS,
+  SANDBOX_START/END, SEAL_EMIT, VERIFY
+- Audit verifier:
+  - validates chain
+  - detects missing/modified lines
+  - outputs audit_head_hash
+
+B3) Hashen Runner (Secure Sandbox for Scripts)
+- Script references:
+  - script_id (preferred)
+  - allowlisted URL (optional)
+  - inline snippet only in DEV mode (explicit flag)
+- Integrity verification:
+  - sha256 always required
+  - optional ed25519 signature verification supported
+- Execution isolation:
+  MVP: subprocess runner with strict resource limits (Linux/macOS); Windows falls back to timeout only
+  Design interface so Docker/gVisor can replace runner later without changing callers.
+- Security controls:
+  - no network by default
+  - read-only FS by default; only sandbox temp dir writable
+  - env cleared by default
+  - import allowlist via AST parse (deny os/subprocess/socket/requests etc.)
+  - CPU, memory, wall-clock time limits
+- Outputs:
+  - JSON stdout contract only
+  - structured error on any violation
+- Audit binding:
+  - sandbox policy digest + script hash + resource usage appended to audit log
+  - audit_head_hash bound into Seal
+
+B4) Hashen Cache (Efficiency + Correctness)
+- Cache key is content-based, not command-based:
+  key = sha256(target_id + content_fingerprint)
+- Cache entries contain:
+  - per-modality H1_subset fingerprint
+  - per-modality H2
+  - resonance (optional)
+- Spot-check reuse:
+  - compute reduced subset windows, compare mean abs diff <= tolerance
+  - reuse only if pass; else recompute
+- Evidence:
+  - log cache_hit_rate
+  - record measured speedup (wall time) in report.json
+  - unit tests prove correct invalidation behavior
+
+B5) Compliance-by-Design
+- Data minimization default:
+  persist derived metrics (H1/H2/resonance/uncertainty/path/audit hashes/seal)
+  DO NOT persist raw artifacts unless retain_raw=true
+- Retention:
+  raw_ttl_hours default 24
+  derived_ttl_days default 365
+  legal_hold flag prevents deletion
+- Privacy tags per run:
+  data_source_type: public | user_provided | partner
+  pii_present: yes | no | unknown
+  consent_basis: consent | legitimate_interest | contract
+- Compliance report per run:
+  reports/<run_id>.json includes:
+    inputs summary (no raw PII), retention choices, ttl, audit_head_hash, seal hash, reason codes
+
+B6) CI / Supply Chain Hardening
+- GitHub Actions CI:
+  - pytest
+  - ruff (lint + format check)
+  - pip-audit (fail on high severity)
+  - SBOM generation (CycloneDX) to sbom/bom.json
+- Release artifacts:
+  - build a source distribution / wheel (optional)
+  - store checksum manifest
+- (Optional) Sign artifacts with cosign later; design placeholder.
+
+──────────────────────────────────────────────────────────────────────────────
+C) FILE/FOLDER STRUCTURE (Create Exactly)
+src/hashen/
+  api/server.py
+  orchestrator/orchestrator.py
+  analytics/{entropy_engine.py,resonance_engine.py,uncertainty.py}
+  provenance/seal.py
+  audit/{event_log.py,verify.py,models.py}
+  sandbox/{runner_interface.py,runner_subprocess.py,policy.py,signing.py,models.py}
+  cache/{fingerprint_cache.py,models.py}
+  compliance/{privacy_tags.py,retention.py,reporting.py}
+  utils/{canonical_json.py,hashing.py,clock.py,paths.py}
+
+tools/
+  run_evidence_bundle.py
+  retention_cleanup.py
+  verify_bundle.py
+
+tests/
+  test_audit_chain.py
+  test_seal_verify.py
+  test_sandbox_policy.py
+  test_cache_correctness.py
+  test_retention.py
+  test_evidence_bundle.py
+
+docs/
+  SECURITY.md
+  THREAT_MODEL.md
+  REASON_CODES.md
+
+.github/workflows/ci.yml
+
+──────────────────────────────────────────────────────────────────────────────
+D) IMPLEMENTATION ORDER (Build Success Path)
+Step 1: canonical_json + hashing utilities (stable JSON serialization)
+Step 2: audit log writer + verifier + tests (chain integrity)
+Step 3: seal (EPW) generator + verifier + tests (tamper fails)
+Step 4: cache correctness + spot-check tests
+Step 5: compliance retention + report outputs + tests
+Step 6: sandbox policy + runner + tests (deny imports, timeouts)
+Step 7: evidence bundle tool + end-to-end tests (run -> verify ok -> tamper -> verify fail)
+Step 8: CI workflow + SBOM + pip-audit
+
+──────────────────────────────────────────────────────────────────────────────
+E) SECURITY / THREAT MODEL (Write to docs/THREAT_MODEL.md)
+Threats to cover and mitigations:
+- Cache poisoning / stale reuse (content_fingerprint + spot-check)
+- Script RCE (sandbox runner + allowlist + no-net + resource caps + signature)
+- Supply chain compromise (pinned deps + SBOM + pip-audit)
+- Audit log tampering (hash chain + seal binding)
+- Metadata stripping (dual-channel seal + recompute from content)
+- Replay attacks (include timestamp + content digest + optional nonce)
+- PII leakage (minimization + redaction in reports)
+
+──────────────────────────────────────────────────────────────────────────────
+F) REASON CODES (Write to docs/REASON_CODES.md)
+Standard failure reasons:
+- EPW_MISMATCH
+- CONFIG_VECTOR_MISSING
+- AUDIT_CHAIN_BROKEN
+- ARTIFACT_DECODE_FAILED
+- INSUFFICIENT_MODALITIES
+- SANDBOX_POLICY_VIOLATION
+- SCRIPT_SIGNATURE_INVALID
+- CACHE_SPOTCHECK_FAILED
+
+──────────────────────────────────────────────────────────────────────────────
+G) ACCEPTANCE TESTS (Must Pass)
+G1) Seal determinism:
+- same artifact + same config -> same seal hash
+G2) Tamper fails:
+- modify artifact bytes -> verify returns ok=false, reason=EPW_MISMATCH
+G3) Audit chain tamper fails:
+- change one audit event -> audit verifier fails, reason=AUDIT_CHAIN_BROKEN
+G4) Sandbox policy enforcement:
+- script importing os/socket -> blocked
+- script exceeding timeout -> killed
+G5) Cache correctness:
+- cache hit only when spot-check passes
+- when content_fingerprint changes -> cache miss
+G6) Retention:
+- raw artifacts deleted after TTL
+- derived retained
+G7) Evidence bundle:
+- tool produces bundle folder with artifact, audit.jsonl, seal.json, verify outputs
+
+──────────────────────────────────────────────────────────────────────────────
+H) PATENT/PROSECUTION ALIGNMENT NOTES (Embed in docs/SECURITY.md)
+- Emphasize deterministic recomputation (config_vector)
+- Emphasize fixed preconfigured H2 range (no auto-ranging)
+- Emphasize security artifact (seal) + audit chain + routing as technical improvements
+- Emphasize measurable efficiency (cache hit rate, speedup logs)
+These are the “allowance levers.”
+
+──────────────────────────────────────────────────────────────────────────────
+I) CURSOR PROMPT (Use This Exactly)
+“Implement Hashen trust layer per this spec. Create the exact file structure, implement canonical JSON hashing, hash-chained audit log, Seal (EPW) generator/verifier with dual-channel output, content-based cache with spot-check reuse and metrics, compliance retention + privacy tagging + per-run report.json, and secure sandbox runner (subprocess MVP) with import allowlist, no-network default, resource limits, and signature verification hooks. Add reason codes, threat model docs, evidence bundle tool, and pytest coverage for all acceptance tests. Ensure stable deterministic outputs for verification.”

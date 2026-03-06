@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: pip install -e .
+
+      - name: Pytest
+        run: pytest
+
+      - name: Ruff (lint + format check)
+        run: |
+          pip install ruff
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: pip-audit (fail on high severity)
+        run: |
+          pip install pip-audit
+          pip-audit --strict --desc
+
+      - name: CycloneDX SBOM
+        run: |
+          pip install cyclonedx-bom
+          mkdir -p sbom
+          cyclonedx-py environment --pyproject pyproject.toml --outfile sbom/bom.json --output-format JSON
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom
+          path: sbom/
+          retention-days: 7
