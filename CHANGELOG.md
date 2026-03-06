@@ -44,6 +44,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Seal and audit verification reject tampering with explicit reason codes.
 - Manifest verification fails on missing or altered files.
 
+### Fixed / Repairs (branch integrity pass)
+
+- **Formatting / line endings**: Added `.gitattributes` to enforce LF for source, config, and docs so GitHub raw views and CI use consistent line endings; no flattened/single-line files found in local audit.
+- **Install and CI**: Validated `pip install -e ".[dev]"`, `python -m compileall`, pytest, ruff check, ruff format; CI workflow (`.github/workflows/ci.yml`) confirmed valid multiline YAML with checkout, Python setup, editable install, compile, pytest, ruff, pip-audit, SBOM, evidence-bundle smoke test.
+- **Cleanup**: Removed duplicate/stale `README.txt` and `Makefile.txt`; canonical files are `README.md` and `Makefile`.
+
 ## [0.1.0] - (pre-hardening)
 
 - Initial prototype: seal (EPW), audit chain, cache, subprocess runner, evidence bundle tooling.
